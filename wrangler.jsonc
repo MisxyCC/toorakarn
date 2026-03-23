@@ -13,12 +13,7 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
-	"vectorize": [
-    {
-      "binding": "VECTORIZE_INDEX",
-      "index_name": "pea-benefits-index"
-    }
-  	],
+	"vectorize": [],
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
