@@ -1,5 +1,12 @@
 import { CommonErrorResponse, GeminiEmbeddingResponse, GeminiGenerateResponse } from './model';
 
+export interface Env {
+	RATE_LIMITER: any;
+	GOOGLE_API_KEY: string;
+	LINE_CHANNEL_ACCESS_TOKEN: string;
+	LINE_CHANNEL_SECRET: string;
+}
+
 // --- Helper: ตรวจสอบความถูกต้องของ Request จาก LINE ---
 export async function verifyLineSignature(signature: string, body: string, channelSecret: string): Promise<boolean> {
 	const encoder = new TextEncoder();
@@ -62,8 +69,8 @@ export async function generateAnswerWithGemini(userMessage: string, context: str
 			system_instruction: { parts: [{ text: systemInstruction }] },
 			contents: [{ role: 'user', parts: [{ text: prompt }] }],
 			generationConfig: {
-        temperature: 0.1
-      }
+				temperature: 0.1,
+			},
 		}),
 	});
 	if (response.status === 429) {
@@ -71,12 +78,10 @@ export async function generateAnswerWithGemini(userMessage: string, context: str
 		const errorMessage = errorData.error?.message || '';
 		if (errorMessage.includes('Requests per minute')) {
 			throw new Error(CommonErrorResponse.REQUEST_PER_MINUTE_EXCEEDED);
-		}
-		else if (errorMessage.includes('Requests per day')) {
+		} else if (errorMessage.includes('Requests per day')) {
 			throw new Error(CommonErrorResponse.REQUESTS_PER_DAY_EXCEEDED);
 		}
-	}
-	else if (!response.ok) {
+	} else if (!response.ok) {
 		throw new Error(`LLM Generation failed: ${await response.text()}`);
 	}
 
@@ -98,4 +103,32 @@ export async function replyToLine(replyToken: string, text: string, accessToken:
 			messages: [{ type: 'text', text: text, quoteToken: quoteToken }],
 		}),
 	});
+}
+
+export async function isReachedUserLimit(rateLimiter: any, userId: string): Promise<boolean> {
+	const userCheck = await rateLimiter.limit({ key: userId });
+	if (!userCheck.success) {
+		console.warn(`User ${userId} is spamming. Ignored.`);
+		return true;
+	}
+	return false;
+}
+
+export async function isReachedGlobalLimit(rateLimiter: any): Promise<boolean> {
+	const userCheck = await rateLimiter.limit({ key: 'global_system_key' });
+	if (!userCheck.success) {
+		console.warn(`🚨 System hit the Gemini 15 RPM limit!`);
+		return true;
+	}
+	return false;
+}
+
+export async function responseRPMLimit(replyToken: string, lineChannelAccessToken: string, quoteToken?: string): Promise<void> {
+	const busyMessage = 'ตอนนี้มีพี่ๆไฟฟ้าทักเข้ามาสอบถามสวัสดิการเยอะมากเลยค่ะ 😅 คิวตอบล้นแล้ววว รบกวนพี่รอสัก 1 นาที แล้วพิมพ์คำถามส่งมาใหม่อีกครั้งนะค้า 💜⚡';
+	await replyToLine(replyToken, busyMessage, lineChannelAccessToken, quoteToken);
+}
+
+export async function responseRPDLimit(replyToken: string, lineChannelAccessToken: string, quoteToken?: string): Promise<void> {
+	const busyMessage = 'ขออภัยด้วยนะค๊า 🙏 ตอนนี้โควต้า AI ประจำวันของบอทถูกใช้งานจนหมดแล้ว น้องขออนุญาตไปพักเบรกก่อนน้า เดี๋ยวพรุ่งนี้กลับมาให้บริการตามปกติค่า ขอบคุณที่แวะมาใช้งานนะค๊า 💖';
+  await replyToLine(replyToken, busyMessage, lineChannelAccessToken, quoteToken);
 }
