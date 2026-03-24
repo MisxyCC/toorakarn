@@ -1,6 +1,6 @@
 import kbDataJson from './knowledge_base.json';
 import { verifyLineSignature, generateAnswerWithGemini, replyToLine } from './helper';
-import { KnowledgeBaseItem, LineWebhookBody, LineEvent } from './model';
+import { KnowledgeBaseItem, LineWebhookBody, LineEvent, CommonErrorResponse } from './model';
 
 export interface Env {
   GOOGLE_API_KEY: string;
@@ -32,8 +32,8 @@ export default {
     const events = body.events || [];
 
     for (const event of events) {
-      if (event.type === 'message' && event.message && event.message.type === 'text') {
-        ctx.waitUntil(handleMessageEvent(event, env));
+      if (event.type === 'message' && event.message && event.message.type === 'text' && event.message.text && event.replyToken) {
+				ctx.waitUntil(handleMessageEvent(event, env));
       }
     }
 
@@ -45,17 +45,24 @@ export default {
 async function handleMessageEvent(event: LineEvent, env: Env): Promise<void> {
   const userMessage = event.message.text;
   const replyToken = event.replyToken;
-
+	const quoteToken = event.message.quoteToken;
   if (!userMessage) return;
 
   try {
-    const finalAnswer = await generateAnswerWithGemini(userMessage, FULL_CONTEXT, env.GOOGLE_API_KEY);
+		const sanitizedMessage = userMessage.slice(0, 500).replace(/[<>{}\\]/g, '');
+    const finalAnswer = await generateAnswerWithGemini(sanitizedMessage, FULL_CONTEXT, env.GOOGLE_API_KEY);
 
     // ตอบกลับ LINE ทันที
-    await replyToLine(replyToken, finalAnswer, env.LINE_CHANNEL_ACCESS_TOKEN);
+    await replyToLine(replyToken, finalAnswer, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error processing message:', error);
-    await replyToLine(replyToken, 'ขออภัยครับ ระบบตรวจสอบสวัสดิการขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้งในภายหลังครับ', env.LINE_CHANNEL_ACCESS_TOKEN);
+		if (error.mesage === CommonErrorResponse.RATE_LIMIT_EXCEEDED) {
+			const busyMessage = 'ตอนนี้มีพี่ๆไฟฟ้าทักเข้ามาสอบถามสวัสดิการเยอะมากเลยค่ะ 😅 คิวตอบล้นแล้ววว รบกวนพี่รอสัก 1 นาที แล้วพิมพ์คำถามส่งมาใหม่อีกครั้งนะค้า 💜⚡';
+      await replyToLine(replyToken, busyMessage, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken);
+		} else {
+			const fallbackMessage = 'ขออภัยค่ะ ระบบตรวจสอบสวัสดิการขัดข้องชั่วคราว ลองใหม่อีกครั้งนะคะ 😊';
+      await replyToLine(replyToken, fallbackMessage, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken);
+		}
   }
 }

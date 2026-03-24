@@ -1,4 +1,4 @@
-import { GeminiEmbeddingResponse, GeminiGenerateResponse } from './model';
+import { CommonErrorResponse, GeminiEmbeddingResponse, GeminiGenerateResponse } from './model';
 
 // --- Helper: ตรวจสอบความถูกต้องของ Request จาก LINE ---
 export async function verifyLineSignature(signature: string, body: string, channelSecret: string): Promise<boolean> {
@@ -39,8 +39,8 @@ export async function generateAnswerWithGemini(userMessage: string, context: str
 	const systemInstruction = `
 คุณคือ "น้องธุรการ Turakarn" ของพนักงานการไฟฟ้าส่วนภูมิภาค (กฟภ. / PEA) 💜⚡
 🎯 สไตล์การตอบคำถาม (UX & Tone):
-1. ทักทายและตอบรับแบบมนุษย์: ใช้ภาษาพูดที่เป็นธรรมชาติ
-2. มีความเห็นอกเห็นใจ (Empathy): หากผู้ใช้พิมพ์ด้วยอารมณ์หงุดหงิด (เช่น ระบบล่ม เงินไม่ออก) ให้แสดงความเข้าใจและขออภัยในความไม่สะดวกก่อนเสนอทางแก้
+1. ทักทายและตอบรับแบบมนุษย์: ใช้ภาษาพูดที่เป็นธรรมชาติ และตอบกลับเป็นภาษาที่ผู้ใช้ใช้มา (เช่น ถ้าผู้ใช้พิมพ์มาด้วยภาษาอังกฤษ ก็ให้ตอบกลับเป็นภาษาอังกฤษ)
+2. มีความเห็นอกเห็นใจ (Empathy): หากผู้ใช้พิมพ์ด้วยอารมณ์หงุดหงิด โมโห ให้แสดงความเข้าใจและขออภัยในความไม่สะดวกก่อนเสนอทางแก้
 3. จัดรูปแบบให้อ่านง่ายบนจอมือถือ:
    - ใช้ Emoji ที่เกี่ยวข้อง 1-2 ตัวเพื่อพักสายตา (เช่น 💡, 📝, 📞)
    - ห้ามใช้ Markdown ตัวหนา/เอียง (เช่น **ข้อความ**) เพราะแอป LINE ไม่รองรับ
@@ -66,7 +66,10 @@ export async function generateAnswerWithGemini(userMessage: string, context: str
       }
 		}),
 	});
-	if (!response.ok) {
+	if (response.status === 429) {
+		throw new Error(CommonErrorResponse.RATE_LIMIT_EXCEEDED);
+	}
+	else if (!response.ok) {
 		throw new Error(`LLM Generation failed: ${await response.text()}`);
 	}
 
@@ -75,7 +78,7 @@ export async function generateAnswerWithGemini(userMessage: string, context: str
 }
 
 // --- Helper: ตอบกลับ LINE ---
-export async function replyToLine(replyToken: string, text: string, accessToken: string): Promise<void> {
+export async function replyToLine(replyToken: string, text: string, accessToken: string, quoteToken?: string): Promise<void> {
 	const url = 'https://api.line.me/v2/bot/message/reply';
 	await fetch(url, {
 		method: 'POST',
@@ -85,7 +88,7 @@ export async function replyToLine(replyToken: string, text: string, accessToken:
 		},
 		body: JSON.stringify({
 			replyToken: replyToken,
-			messages: [{ type: 'text', text: text }],
+			messages: [{ type: 'text', text: text, quoteToken: quoteToken }],
 		}),
 	});
 }

@@ -1,5 +1,8 @@
 // --- 1. กำหนด Type Definition อย่างเข้มงวด (Strict Types) ---
 // Type สำหรับ Knowledge Base
+export enum CommonErrorResponse {
+	RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED",
+}
 export interface KnowledgeBaseItem {
   id: string;
   hierarchy: string;
@@ -12,6 +15,8 @@ export interface LineMessage {
   type: string;
   id: string;
   text?: string;
+	quotedMessageId?: string;
+	quoteToken?: string;
 }
 
 export interface LineEvent {
