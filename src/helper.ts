@@ -67,7 +67,14 @@ export async function generateAnswerWithGemini(userMessage: string, context: str
 		}),
 	});
 	if (response.status === 429) {
-		throw new Error(CommonErrorResponse.RATE_LIMIT_EXCEEDED);
+		const errorData = (await response.json()) as any;
+		const errorMessage = errorData.error?.message || '';
+		if (errorMessage.includes('Requests per minute')) {
+			throw new Error(CommonErrorResponse.REQUEST_PER_MINUTE_EXCEEDED);
+		}
+		else if (errorMessage.includes('Requests per day')) {
+			throw new Error(CommonErrorResponse.REQUESTS_PER_DAY_EXCEEDED);
+		}
 	}
 	else if (!response.ok) {
 		throw new Error(`LLM Generation failed: ${await response.text()}`);

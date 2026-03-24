@@ -1,7 +1,8 @@
 // --- 1. กำหนด Type Definition อย่างเข้มงวด (Strict Types) ---
 // Type สำหรับ Knowledge Base
 export enum CommonErrorResponse {
-	RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED",
+	REQUEST_PER_MINUTE_EXCEEDED = "REQUEST_PER_MINUTE_EXCEEDED",
+	REQUESTS_PER_DAY_EXCEEDED = "REQUESTS_PER_DAY_EXCEEDED",
 }
 export interface KnowledgeBaseItem {
   id: string;

@@ -57,8 +57,11 @@ async function handleMessageEvent(event: LineEvent, env: Env): Promise<void> {
 
   } catch (error: any) {
     console.error('Error processing message:', error);
-		if (error.mesage === CommonErrorResponse.RATE_LIMIT_EXCEEDED) {
+		if (error.message === CommonErrorResponse.REQUEST_PER_MINUTE_EXCEEDED) {
 			const busyMessage = 'ตอนนี้มีพี่ๆไฟฟ้าทักเข้ามาสอบถามสวัสดิการเยอะมากเลยค่ะ 😅 คิวตอบล้นแล้ววว รบกวนพี่รอสัก 1 นาที แล้วพิมพ์คำถามส่งมาใหม่อีกครั้งนะค้า 💜⚡';
+      await replyToLine(replyToken, busyMessage, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken);
+		} else if (error.message === CommonErrorResponse.REQUESTS_PER_DAY_EXCEEDED) {
+			const busyMessage = 'ขออภัยด้วยนะค๊า 🙏 ตอนนี้โควต้า AI ประจำวันของบอทถูกใช้งานจนหมดแล้ว น้องขออนุญาตไปพักเบรกก่อนน้า เดี๋ยวพรุ่งนี้กลับมาให้บริการตามปกติค่า ขอบคุณที่แวะมาใช้งานนะค๊า 💖';
       await replyToLine(replyToken, busyMessage, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken);
 		} else {
 			const fallbackMessage = 'ขออภัยค่ะ ระบบตรวจสอบสวัสดิการขัดข้องชั่วคราว ลองใหม่อีกครั้งนะคะ 😊';
