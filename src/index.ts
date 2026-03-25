@@ -29,9 +29,10 @@ export default {
 		const events = body.events || [];
 
 		for (const event of events) {
-			if (event.type === 'message' && event.message && event.message.type === 'text' && event.message.text && event.replyToken) {
-				ctx.waitUntil(handleMessageEvent(event, env));
-			}
+			if (event.type !== 'message' || (event.message.type !== 'text' && event.message.type !== 'audio')) {
+        		continue;
+    		}
+			ctx.waitUntil(handleMessageEvent(event, env));
 		}
 		return new Response('OK', { status: 200 });
 	},
