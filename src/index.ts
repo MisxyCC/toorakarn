@@ -27,11 +27,14 @@ export default {
 
 		const body = JSON.parse(rawBody) as LineWebhookBody;
 		const events = body.events || [];
-
+		console.log(`[DEBUG] Received Webhook with ${events.length} events`);
 		for (const event of events) {
+			console.log(`[DEBUG] 🔍 Event Type: ${event.type}, Message Type: ${event.message?.type}`);
 			if (event.type !== 'message' || (event.message.type !== 'text' && event.message.type !== 'audio')) {
-        		continue;
+				console.log(`[DEBUG] ⏭️ Skipping unhandled event type.`);
+				continue;
     		}
+			console.log(`[DEBUG] 🚀 Passing event to handleMessageEvent...`);
 			ctx.waitUntil(handleMessageEvent(event, env));
 		}
 		return new Response('OK', { status: 200 });
