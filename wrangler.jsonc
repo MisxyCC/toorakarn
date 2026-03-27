@@ -13,7 +13,18 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
-	"vectorize": [],
+	"kv_namespaces": [
+	{
+		"binding": "KV",
+		"id": "805129e0301a42b4b20d9aeab8d5a240"
+	}
+  	],
+	"vectorize": [
+	{
+		"binding": "VECTORIZE",
+		"index_name": "toorakarn-knowledge-index"
+    }
+	],
 	"ratelimits": [
     {
       "name": "GLOBAL_GEMINI_LIMITER",

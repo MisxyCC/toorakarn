@@ -3,12 +3,6 @@ export enum CommonErrorResponse {
 	REQUESTS_PER_DAY_EXCEEDED = 'REQUESTS_PER_DAY_EXCEEDED',
 	GEMINI_TIMEOUT = 'GEMINI_TIMEOUT',
 }
-export interface KnowledgeBaseItem {
-	id: string;
-	hierarchy: string;
-	original_content: string;
-	enriched_content: string;
-}
 
 // Types สำหรับ LINE Webhook
 export interface LineMessage {
@@ -55,4 +49,11 @@ export interface GeminiGenerateResponse {
 export interface AudioContent {
 	base64: string;
 	mimeType: string;
+}
+
+// Type สำหรับข้อมูลที่ดึงจาก Cloudflare KV
+export interface KBDocument {
+	title: string;
+	content: string;
+	source: string;
 }
