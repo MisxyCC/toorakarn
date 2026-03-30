@@ -14,8 +14,6 @@ export const systemInstruction = `
 
 	[Out-of-Domain]: หากเป็นคำถามที่ข้อมูลใน Context ไม่เพียงพอในการตอบคำถาม ห้ามตอบเดา ให้ตอบอย่างสุภาพว่า "ขออภัยจริงๆ ค่ะ น้องธุรการยังไม่มีข้อมูลส่วนนี้ ไว้จะรีบไปศึกษาเพิ่มเติมนะคะ 💜"
 
-	[Conditional Disclaimer]: หากคำตอบมีการระบุถึง "จำนวนเงิน", "จำนวนวันลา", หรือ "สิทธิในการเบิกจ่าย" ให้เพิ่มข้อความเตือนท้ายคำตอบเสมอว่า "💡 เพื่อความถูกต้องตามระเบียบ อย่าลืมสอบถามผู้ตรวจสอบสิทธิสวัสดิการของแต่ละพื้นที่อีกครั้งนะคะ" (ไม่ต้องใส่ข้อความนี้หากเป็นคำถามทักทายหรือคำถามทั่วไป)
-
 	3. การจัดการอารมณ์และสถานการณ์ (Empathy & Protocol)
 
 	[Empathy First]: วิเคราะห์อารมณ์ของคำถามเสมอ หากเป็นเรื่องเจ็บป่วย อุบัติเหตุ ภัยพิบัติ หรือความสูญเสีย ให้เริ่มต้นประโยคด้วยความห่วงใยหรือให้กำลังใจอย่างจริงใจก่อนให้ข้อมูล
@@ -72,7 +70,7 @@ export async function getGeminiEmbedding(text: string, apiKey: string): Promise<
 				model: 'models/gemini-embedding-2-preview',
 				content: { parts: [{ text: text }] },
 				taskType: 'RETRIEVAL_QUERY', // ระบุว่าเป็นเวกเตอร์สำหรับใช้ค้นหาคำตอบ
-				outputDimensionality: VECTOR_DIMENSIONALITY,  // บังคับมิติให้ตรงกับ Vectorize
+				outputDimensionality: VECTOR_DIMENSIONALITY, // บังคับมิติให้ตรงกับ Vectorize
 			}),
 		});
 
@@ -81,10 +79,10 @@ export async function getGeminiEmbedding(text: string, apiKey: string): Promise<
 			throw new Error(`Google API returned ${response.status}: ${errorText}`);
 		}
 
-		const data = await response.json() as any;
+		const data = (await response.json()) as any;
 
 		if (!data.embedding || !data.embedding.values) {
-			throw new Error("รูปแบบเวกเตอร์ที่ตอบกลับมาไม่ถูกต้อง");
+			throw new Error('รูปแบบเวกเตอร์ที่ตอบกลับมาไม่ถูกต้อง');
 		}
 
 		return data.embedding.values;
@@ -95,7 +93,13 @@ export async function getGeminiEmbedding(text: string, apiKey: string): Promise<
 }
 
 // --- Helper: ตอบกลับ LINE ---
-export async function replyToLine(replyToken: string, text: string, accessToken: string, quoteToken?: string, signal?: AbortSignal): Promise<void> {
+export async function replyToLine(
+	replyToken: string,
+	text: string,
+	accessToken: string,
+	quoteToken?: string,
+	signal?: AbortSignal,
+): Promise<void> {
 	const url = 'https://api.line.me/v2/bot/message/reply';
 	await fetch(url, {
 		method: 'POST',
@@ -129,15 +133,36 @@ export async function isReachedGlobalLimit(rateLimiter: any): Promise<boolean> {
 	return false;
 }
 
-export async function responseRPMLimit(replyToken: string, lineChannelAccessToken: string, quoteToken?: string, signal?: AbortSignal): Promise<void> {
+export async function responseRPMLimit(
+	replyToken: string,
+	lineChannelAccessToken: string,
+	quoteToken?: string,
+	signal?: AbortSignal,
+): Promise<void> {
 	const busyMessage =
 		'ตอนนี้มีพี่ๆไฟฟ้าทักเข้ามาสอบถามสวัสดิการเยอะมากเลยค่ะ 😅 คิวตอบล้นแล้ววว รบกวนพี่รอสัก 1 นาที แล้วพิมพ์คำถามส่งมาใหม่อีกครั้งนะค้า 💜⚡';
 	await replyToLine(replyToken, busyMessage, lineChannelAccessToken, quoteToken, signal);
 }
 
-export async function responseRPDLimit(replyToken: string, lineChannelAccessToken: string, quoteToken?: string, signal?: AbortSignal): Promise<void> {
+export async function responseRPDLimit(
+	replyToken: string,
+	lineChannelAccessToken: string,
+	quoteToken?: string,
+	signal?: AbortSignal,
+): Promise<void> {
 	const busyMessage =
 		'ขออภัยด้วยนะค๊า 🙏 ตอนนี้โควต้า AI ประจำวันของบอทถูกใช้งานจนหมดแล้ว น้องขออนุญาตไปพักเบรกก่อนน้า เดี๋ยวพรุ่งนี้กลับมาให้บริการตามปกติค่า ขอบคุณที่แวะมาใช้งานนะค๊า 💖';
+	await replyToLine(replyToken, busyMessage, lineChannelAccessToken, quoteToken, signal);
+}
+
+export async function responseServiceUnavailable(
+	replyToken: string,
+	lineChannelAccessToken: string,
+	quoteToken?: string,
+	signal?: AbortSignal,
+): Promise<void> {
+	const busyMessage =
+		'แงงง ขออภัยด้วยนะค้า 😭 ตอนนี้น้องสมองกล (AI) ทำงานหนักมากจนระบบแอบรวนไปนิดนึง รบกวนพี่รอสัก 2-3 นาที แล้วลองพิมพ์คำถามส่งมาใหม่อีกครั้งนะคะ 💜⚡';
 	await replyToLine(replyToken, busyMessage, lineChannelAccessToken, quoteToken, signal);
 }
 
@@ -164,16 +189,18 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
 export async function transcribeAudio(googleGenAI: GoogleGenAI, audioData: AudioContent, signal?: AbortSignal): Promise<string> {
 	const result = await googleGenAI.models.generateContent({
 		model: 'gemini-3.1-flash-lite-preview',
-		contents: [{
-			role: 'user',
-			parts: [
-				{ text: 'ถอดความไฟล์เสียงนี้ให้เป็นข้อความที่ถูกต้องแม่นยำ ไม่ต้องอธิบายหรือเพิ่มคำอื่น' },
-				{ inlineData: { mimeType: audioData.mimeType, data: audioData.base64 } }
-			]
-		}],
+		contents: [
+			{
+				role: 'user',
+				parts: [
+					{ text: 'ถอดความไฟล์เสียงนี้ให้เป็นข้อความที่ถูกต้องแม่นยำ ไม่ต้องอธิบายหรือเพิ่มคำอื่น' },
+					{ inlineData: { mimeType: audioData.mimeType, data: audioData.base64 } },
+				],
+			},
+		],
 		config: {
-			abortSignal: signal
-		}
+			abortSignal: signal,
+		},
 	});
 	return result.text?.trim() || '';
 }

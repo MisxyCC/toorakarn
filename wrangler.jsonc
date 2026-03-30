@@ -14,10 +14,10 @@
 		"nodejs_compat"
 	],
 	"kv_namespaces": [
-	{
-		"binding": "KV",
-		"id": "805129e0301a42b4b20d9aeab8d5a240"
-	}
+    {
+      "binding": "KV",
+      "id": "c92ab46ef89f4f25960292f1ebce6cbc",
+    }
   	],
 	"vectorize": [
 	{

@@ -1,4 +1,15 @@
-import { isReachedGlobalLimit, responseRPMLimit, replyToLine, responseRPDLimit, getLineAudioContent, arrayBufferToBase64, systemInstruction, transcribeAudio, getGeminiEmbedding } from './helper';
+import {
+	isReachedGlobalLimit,
+	responseRPMLimit,
+	replyToLine,
+	responseRPDLimit,
+	getLineAudioContent,
+	arrayBufferToBase64,
+	systemInstruction,
+	transcribeAudio,
+	getGeminiEmbedding,
+	responseServiceUnavailable,
+} from './helper';
 import { LineEvent, CommonErrorResponse, AudioContent, KBDocument } from './model';
 import { GoogleGenAI } from '@google/genai';
 
@@ -53,7 +64,8 @@ export async function handleMessageEvent(event: LineEvent, env: Env): Promise<vo
 			searchQueryText = await transcribeAudio(googleGenAI, audioContentData, timeoutSignal);
 			console.log(`[DEBUG] 🗣️ Transcribed Audio: ${searchQueryText}`);
 		} else {
-			const fallbackMsg = 'ขออภัยค่า 😅 ตอนนี้น้องธุรการยังดูรูปภาพหรือสติ๊กเกอร์ไม่ได้ รบกวนพี่พิมพ์เป็นข้อความ หรือส่งเป็นข้อความเสียงมาแทนนะคะ 💜⚡';
+			const fallbackMsg =
+				'ขออภัยค่า 😅 ตอนนี้น้องธุรการยังดูรูปภาพหรือสติ๊กเกอร์ไม่ได้ รบกวนพี่พิมพ์เป็นข้อความ หรือส่งเป็นข้อความเสียงมาแทนนะคะ 💜⚡';
 			await replyToLine(replyToken, fallbackMsg, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal);
 			return;
 		}
@@ -71,16 +83,14 @@ export async function handleMessageEvent(event: LineEvent, env: Env): Promise<vo
 		const contextTexts: string[] = [];
 		for (const match of vectorResults.matches) {
 			// เอา ID ไปดึงข้อมูลเต็มจาก KV
-			const kbData = await env.KV.get<KBDocument>(match.id, "json");
+			const kbData = await env.KV.get<KBDocument>(match.id, 'json');
 			if (kbData) {
 				contextTexts.push(`[อ้างอิง: ${kbData.source} | หมวด: ${kbData.title}]\n${kbData.content}`);
 			}
 		}
 
 		// รวม Context เข้าด้วยกัน
-		const dynamicContext = contextTexts.length > 0
-			? contextTexts.join('\n\n---\n\n')
-			: 'ไม่พบข้อมูลที่เกี่ยวข้องในฐานข้อมูล';
+		const dynamicContext = contextTexts.length > 0 ? contextTexts.join('\n\n---\n\n') : 'ไม่พบข้อมูลที่เกี่ยวข้องในฐานข้อมูล';
 
 		console.log(`[DEBUG] 📚 Retrieved Context Length: ${dynamicContext.length} chars`);
 
@@ -101,17 +111,19 @@ export async function handleMessageEvent(event: LineEvent, env: Env): Promise<vo
 			const timeoutMessage =
 				'แงงง 😭 คำถามนี้รายละเอียดเยอะมาก น้องธุรการคิดจนปวดหัวเลยค่ะ (หมดเวลา 25 วินาที) รบกวนพี่ลองพิมพ์คำถามให้กระชับลงอีกนิดนึงนะคะ 💜⚡';
 			// เราไม่ส่ง timeoutSignal เข้าไปที่นี่ เพราะมัน abort ไปแล้ว ให้สร้างใหม่สั้นๆ หรือไม่ใส่เลย
-			await replyToLine(replyToken, timeoutMessage, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken).catch(e => console.error('Failed to send timeout msg', e));
+			await replyToLine(replyToken, timeoutMessage, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken);
 			return;
 		}
 
 		if (error.message === CommonErrorResponse.REQUEST_PER_MINUTE_EXCEEDED) {
-			await responseRPMLimit(replyToken, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken);
+			await responseRPMLimit(replyToken, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal);
 		} else if (error.message === CommonErrorResponse.REQUESTS_PER_DAY_EXCEEDED) {
-			await responseRPDLimit(replyToken, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken);
+			await responseRPDLimit(replyToken, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal);
+		} else if (error.message === CommonErrorResponse.GEMINI_SERVICE_UNAVAILABLE) {
+			await responseServiceUnavailable(replyToken, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal);
 		} else {
 			const fallbackMessage = 'ขออภัยค่ะ ระบบเกิดขัดข้องชั่วคราว รบกวนรอสักครู่แล้วลองใหม่อีกครั้งนะคะ 😊';
-			await replyToLine(replyToken, fallbackMessage, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken).catch(e => console.error('Failed to send error msg', e));
+			await replyToLine(replyToken, fallbackMessage, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal);
 		}
 	}
 }
@@ -121,7 +133,7 @@ export async function generateAnswerWithGemini(
 	userMessage: string | null,
 	context: string,
 	audioData?: AudioContent,
-	signal?: AbortSignal
+	signal?: AbortSignal,
 ): Promise<string> {
 	try {
 		const contents: any[] = [];
