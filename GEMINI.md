@@ -1,65 +1,64 @@
-# Project Overview: Toorakarn (ธุรการ) 💜⚡
+# GEMINI.md - Project Context: Toorakarn (น้องธุรการ) 💜⚡
 
-**Toorakarn** is a Cloudflare Workers-based AI assistant designed for employees of the **Provincial Electricity Authority (PEA / กฟภ.)**. It functions as a chatbot ("Nong Toorakarn") that answers questions regarding employee welfare, benefits, and administrative procedures using Retrieval-Augmented Generation (RAG).
+This file serves as the foundational instructional context for Gemini CLI when working within the Toorakarn project.
 
-## Key Technologies
-- **Runtime:** [Cloudflare Workers](https://workers.cloudflare.com/) (Node.js compatibility mode enabled).
-- **Language:** TypeScript.
-- **AI Engine:** [Google Gemini API](https://ai.google.dev/) (using `gemini-3.1-flash-lite-preview` for generation and `gemini-embedding-2-preview` for vector search).
-- **Messaging:** [LINE Messaging API](https://developers.line.biz/en/docs/messaging-api/) for the user interface.
-- **Storage:** 
-  - [Cloudflare Vectorize](https://developers.cloudflare.com/vectorize/) for efficient semantic search.
-  - [Cloudflare KV](https://developers.cloudflare.com/kv/api/) for storing full knowledge base documents.
-- **Rate Limiting:** Cloudflare Workers `ratelimits` to manage API usage (Global and User-level).
+## 🚀 Project Overview
+**Toorakarn (น้องธุรการ)** is an AI Chatbot developed as a personal assistant for **Provincial Electricity Authority (PEA / กฟภ.)** employees. It assists with inquiries regarding employee benefits, regulations, and administrative procedures via the LINE Messaging API.
 
-## Architecture
-- `src/index.ts`: Entry point for LINE webhooks. Handles signature verification and dispatches events.
-- `src/core.ts`: Main logic for RAG (Two-hop retrieval: Vectorize -> KV) and Gemini interactions.
-- `src/helper.ts`: Utility functions, LINE API helpers, and the `systemInstruction` (Persona definition).
-- `src/model.ts`: TypeScript interfaces and error enums.
-- `src/knowledge_base.json`: Source data used to populate the vector index and KV storage.
+### 🛠 Core Technology Stack
+- **Platform:** Cloudflare Workers (TypeScript)
+- **AI Model:** Google Gemini 3.1 Flash Lite (via `@google/genai` SDK)
+- **Database/Storage:** 
+  - **Cloudflare Vectorize:** For semantic search and RAG indexing.
+  - **Cloudflare KV:** For storing full knowledge base document content.
+- **Interface:** LINE Messaging API (Webhook based).
+- **Runtime:** Node.js compatibility mode on Cloudflare.
 
----
-
-## Building and Running
-
-### Development Commands
-- `npm run dev`: Start a local development server using `wrangler dev`.
-- `npm run test`: Run the test suite using Vitest.
-- `npm run deploy`: Deploy the worker to Cloudflare.
-- `npm run cf-typegen`: Generate TypeScript types for Cloudflare bindings (run after modifying `wrangler.jsonc`).
-
-### Environment Variables
-The following secrets are required in the Cloudflare environment:
-- `GOOGLE_API_KEY`: API key for Google Gemini.
-- `LINE_CHANNEL_ACCESS_TOKEN`: Access token for the LINE Messaging API.
-- `LINE_CHANNEL_SECRET`: Secret key for verifying LINE webhook signatures.
+### 🏗 Architecture & Flow
+1. **Webhook Entry:** `src/index.ts` receives POST requests from LINE, verifies signatures, and hands off events to the core logic.
+2. **Core Processing:** `src/core.ts` manages the lifecycle of a message:
+   - **Text Messages:** Extracted directly.
+   - **Audio Messages:** Downloaded from LINE and transcribed using Gemini.
+3. **Retrieval-Augmented Generation (RAG):**
+   - Query text is converted to an embedding.
+   - **Two-Hop Retrieval:** 
+     1. Search `VECTORIZE` for the top-K matching document IDs.
+     2. Retrieve the full text content from `KV` using those IDs.
+4. **Grounded Generation:** The query and retrieved context are sent to Gemini with a strict system instruction to answer *only* based on the provided context (Strict Grounding).
+5. **Response:** The formatted answer is sent back to the user via the LINE Messaging API.
 
 ---
 
-## Development Conventions
-
-### Persona: น้องธุรการ (Nong Toorakarn) 💜⚡
-- **Tone:** Friendly, helpful, and empathetic. Use polite Thai particles (ค่ะ/คะ).
-- **Formatting (CRITICAL):**
-    - **NO MARKDOWN:** Do not use `**bold**` or `*italic*` as LINE does not support them natively in standard text messages.
-    - **EMOJIS:** Use emojis as visual cues (e.g., 📌 for headers, 💰 for money, 📄 for documents, ⏳ for scheduling).
-    - **CHUNKING:** Keep paragraphs short and use frequent line breaks for readability on mobile devices.
-
-### AI Constraints & RAG Strategy
-- **Strict Grounding:** The bot must only answer based on the provided "Context". If information is missing, it should politely state it doesn't know.
-- **Two-Hop Retrieval:** 
-  1. Search `Vectorize` to find the most relevant document IDs.
-  2. Fetch the full content from `KV` using those IDs.
-- **Audio Support:** Supports `.m4a` audio messages by transcribing them via Gemini before processing the query.
-- **Disclaimer:** Always add a reminder to verify details with official authorities when mentioning specific amounts or rights.
-
-### Reliability & Performance
-- **Timeout Management:** Uses `AbortSignal.timeout(25000)` (25 seconds) for all external requests to ensure the bot can respond with a friendly error message before Cloudflare's 30-second execution limit.
-- **Rate Limiting:** Implements limits at both global (15 RPM) and user-specific levels to prevent abuse and manage API costs.
+## 💻 Development Commands
+| Command | Purpose |
+|---------|---------|
+| `npm run dev` | Starts local development server using `wrangler dev`. |
+| `npm run deploy` | Deploys the worker to Cloudflare. |
+| `npm run test` | Executes tests using Vitest (Vitest Pool for Workers). |
+| `npm run cf-typegen` | Generates TypeScript types for Cloudflare bindings (KV, Vectorize, etc.). |
 
 ---
 
-## Maintenance
-- **Updating Knowledge:** After updating data in Vectorize/KV, ensure `src/knowledge_base.json` is kept in sync for reference.
-- **Binding Changes:** Always run `npm run cf-typegen` after editing `wrangler.jsonc` to update the `Env` interface.
+## 📂 Key File Structure
+- `src/index.ts`: Worker entry point; handles request routing and signature verification.
+- `src/core.ts`: The "brain" of the application; coordinates RAG and Gemini interactions.
+- `src/helper.ts`: Utility functions for LINE API, Gemini API, rate limiting, and formatting.
+- `src/model.ts`: TypeScript interfaces and enums (LINE events, Gemini responses, KB documents).
+- `wrangler.jsonc`: Configuration for Cloudflare resources (KV namespaces, Vectorize indexes, Rate limits).
+- `test/`: Vitest test suites.
+
+---
+
+## 📏 Development Conventions
+- **Strict Grounding:** AI responses must be grounded in the retrieved knowledge base. Do not allow the model to hallucinate or use external knowledge for welfare rules.
+- **Error Handling:** Use the defined `CommonErrorResponse` patterns. Ensure users receive friendly, persona-consistent error messages (e.g., "แงงง 😭", "ขออภัยค่า 😅").
+- **Performance:** Maintain a response path under 25 seconds to avoid Cloudflare's 30-second execution limit and allow for a timeout response to be sent to LINE.
+- **Bindings:** When adding or changing Cloudflare resources (KV, R2, etc.), update `wrangler.jsonc` and run `npm run cf-typegen`.
+
+---
+
+## 🤖 Persona & Tone
+The assistant's persona is **"น้องธุรการ" (Nong Toorakarn)**:
+- **Tone:** Friendly, helpful, polite, and uses casual Thai office particles (e.g., "นะคะ", "ค่า").
+- **Visuals:** Uses emojis (💜, ⚡) to match the brand identity.
+- **Formatting:** Uses Markdown-lite suitable for mobile phone screens (short paragraphs, bullet points).
