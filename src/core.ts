@@ -11,7 +11,7 @@ import {
 	responseServiceUnavailable,
 } from './helper';
 import { LineEvent, CommonErrorResponse, AudioContent, KBDocument } from './model';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 
 export interface Env {
 	GLOBAL_GEMINI_LIMITER: any;
@@ -164,6 +164,7 @@ export async function generateAnswerWithGemini(
 				temperature: 0.1,
 				systemInstruction: systemInstruction,
 				abortSignal: signal,
+				
 			},
 		});
 
