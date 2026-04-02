@@ -1,3 +1,4 @@
+import { TOP_K } from './constant';
 import {
 	isReachedGlobalLimit,
 	responseRPMLimit,
@@ -83,7 +84,7 @@ export async function handleMessageEvent(event: LineEvent, env: Env): Promise<vo
 		const userVector = await getGeminiEmbedding(searchQueryText, env.GOOGLE_API_KEY);
 
 		// ค้นหา ID จาก Vectorize
-		const vectorResults = await env.VECTORIZE.query(userVector, { topK: 10 });
+		const vectorResults = await env.VECTORIZE.query(userVector, { topK: TOP_K });
 
 		const contextTexts: string[] = [];
 		for (const match of vectorResults.matches) {
@@ -169,7 +170,6 @@ export async function generateAnswerWithGemini(
 				temperature: 0.1,
 				systemInstruction: systemInstruction,
 				abortSignal: signal,
-
 			},
 		});
 
