@@ -78,7 +78,7 @@ export async function handleMessageEvent(event: LineEvent, env: Env): Promise<vo
 		const userVector = await getGeminiEmbedding(searchQueryText, env.GOOGLE_API_KEY);
 
 		// ค้นหา ID จาก Vectorize (เอา 3 อันดับแรก)
-		const vectorResults = await env.VECTORIZE.query(userVector, { topK: 3 });
+		const vectorResults = await env.VECTORIZE.query(userVector, { topK: 10 });
 
 		const contextTexts: string[] = [];
 		for (const match of vectorResults.matches) {
@@ -164,7 +164,7 @@ export async function generateAnswerWithGemini(
 				temperature: 0.1,
 				systemInstruction: systemInstruction,
 				abortSignal: signal,
-				
+
 			},
 		});
 
