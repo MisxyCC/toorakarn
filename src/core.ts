@@ -9,6 +9,7 @@ import {
 	transcribeAudio,
 	getGeminiEmbedding,
 	responseServiceUnavailable,
+	startLoadingAnimation,
 } from './helper';
 import { LineEvent, CommonErrorResponse, AudioContent, KBDocument } from './model';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
@@ -24,8 +25,9 @@ export interface Env {
 }
 // --- Core Logic สำหรับจัดการข้อความ ---
 export async function handleMessageEvent(event: LineEvent, env: Env): Promise<void> {
+	const baseTimeout = 25000; // 25 seconds for main processing, leaving 5 seconds for error response before Cloudflare's 30s limit
 	// สร้าง AbortSignal สำหรับ Timeout 25 วินาที (เพื่อให้เหลือเวลา 5 วินาทีในการส่ง Error Response ก่อน Cloudflare ตัด 30s)
-	const timeoutSignal = AbortSignal.timeout(25000);
+	const timeoutSignal = AbortSignal.timeout(baseTimeout);
 	const googleGenAI = new GoogleGenAI({ apiKey: env.GOOGLE_API_KEY });
 
 	console.log(`[DEBUG] --- Start handleMessageEvent ---`);
@@ -47,6 +49,9 @@ export async function handleMessageEvent(event: LineEvent, env: Env): Promise<vo
 		return;
 	}
 	try {
+		// 🟢 0. แสดง Loading Animation ให้ผู้ใช้เห็นว่าบอทกำลังประมวลผล (แสดงสูงสุด 25 วินาที)
+		await startLoadingAnimation(userId, env.LINE_CHANNEL_ACCESS_TOKEN, baseTimeout / 1000, timeoutSignal);
+
 		let finalAnswer = '';
 		let searchQueryText = '';
 		console.log(`[DEBUG] 🛣️ Routing to Message Type: ${messageType}`);
@@ -77,7 +82,7 @@ export async function handleMessageEvent(event: LineEvent, env: Env): Promise<vo
 		//const userVector = await getGeminiEmbedding(searchQueryText, googleGenAI, timeoutSignal);
 		const userVector = await getGeminiEmbedding(searchQueryText, env.GOOGLE_API_KEY);
 
-		// ค้นหา ID จาก Vectorize (เอา 3 อันดับแรก)
+		// ค้นหา ID จาก Vectorize
 		const vectorResults = await env.VECTORIZE.query(userVector, { topK: 10 });
 
 		const contextTexts: string[] = [];
