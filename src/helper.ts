@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { AudioContent, GeminiEmbeddingResponse, GeminiGenerateResponse } from './model';
 import { Buffer } from 'node:buffer';
+import { LLM_MAIN_MODEL } from './constant';
 
 export const VECTOR_DIMENSIONALITY = 1536;
 
@@ -22,7 +23,7 @@ export const systemInstruction = `
 กรณีสวัสดิการและระเบียบ (Welfare & Rules): ให้ใช้โครงสร้างเต็ม:
 💡 รายละเอียดและเงื่อนไข: ดึงข้อมูล/ตัวเลข/ระเบียบย่อยมาอธิบายให้ชัดเจน
 🧮 วิธีคำนวณ: แสดงวิธีคิดด้วยเครื่องหมายคณิตศาสตร์ (ถ้ามี)
-📌 สรุปสิทธิที่คุณจะได้รับ: สรุปคำตอบสุดท้าย
+📌 สรุปสิทธิที่คุณจะได้รับ: สรุปคำตอบสุดท้าย (ใช้เฉพาะกรณีที่เป็นเรื่องการเบิกจ่ายเงิน หรือมีตัวเลขสิทธิชัดเจนเท่านั้น หากเป็นการถามระเบียบหรือข้อมูลทั่วไป ห้ามใส่หัวข้อนี้เด็ดขาด)
 กรณีค้นหาข้อมูลติดต่อ/เบอร์โทร (Directory & Contacts): ให้เน้นความกระชับ รวดเร็ว และอ่านง่าย ห้ามใช้โครงสร้างสรุปสิทธิแบบด้านบน ให้ใช้รูปแบบ:
 📞 [ชื่อหน่วยงาน/บุคคล/ตำแหน่ง]: [เบอร์โทรศัพท์]
 (สามารถต่อท้ายด้วยรายละเอียดตำแหน่งสั้นๆ หากมีใน Context)
@@ -41,7 +42,7 @@ export const systemInstruction = `
 5. ตัวอย่างการใช้ Emoji (UX Guide):
 💡 สำหรับเกณฑ์การพิจารณา / เงื่อนไขสำคัญ (เขียนให้ละเอียด)
 🧮 สำหรับการแสดงวิธีคำนวณตัวเลข (เช่น 500 + 500 = 1,000)
-📌 สำหรับบทสรุปสิทธิประโยชน์
+📌 สำหรับบทสรุปสิทธิประโยชน์ (ห้ามใช้หากไม่มีตัวเลขสิทธิหรือจำนวนเงินที่จะสรุป)
 💰 สำหรับยอดเงิน (ระบุทั้งยอดขั้นต่ำ-สูงสุด หากมี)
 📄 สำหรับเอกสาร (ระบุให้ครบทุกใบที่มีใน context)
 ⚠️ สำหรับหมายเหตุ หรือข้อควรระวัง (ถ้ามีในข้อมูล ต้องตอบเสมอ)
@@ -203,7 +204,18 @@ export async function responseServiceUnavailable(
 	signal?: AbortSignal,
 ): Promise<void> {
 	const busyMessage =
-		'แงงง ขออภัยด้วยนะค้า 😭 ตอนนี้น้องสมองกล (AI) ทำงานหนักมากจนระบบแอบรวนไปนิดนึง รบกวนพี่รอสัก 2-3 นาที แล้วลองพิมพ์คำถามส่งมาใหม่อีกครั้งนะคะ 💜⚡';
+		'แงงง ขออภัยด้วยนะค้า 😭 ตอนนี้น้องทำงานหนักมากจนระบบแอบรวนไปนิดนึง รบกวนพี่รอสัก 2-3 นาที แล้วลองพิมพ์คำถามส่งมาใหม่อีกครั้งนะคะ 💜⚡';
+	await replyToLine(replyToken, busyMessage, lineChannelAccessToken, quoteToken, signal);
+}
+
+export async function responseGeminiTimeout(
+	replyToken: string,
+	lineChannelAccessToken: string,
+	quoteToken?: string,
+	signal?: AbortSignal,
+): Promise<void> {
+	const busyMessage =
+		'แงงง ขออภัยด้วยนะค้า 😭 ตอนนี้น้องประมวลผลไม่ทัน 25 วินาที รบกวนพี่ลองพิมพ์คำถามแบบกระชับ ๆ ส่งมาใหม่อีกครั้งนะคะ 💜⚡';
 	await replyToLine(replyToken, busyMessage, lineChannelAccessToken, quoteToken, signal);
 }
 
@@ -229,7 +241,7 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
 // 🟢 ฟังก์ชันใหม่: ให้ AI ถอดเสียงเป็นข้อความก่อนนำไปค้นหา (Transcription)
 export async function transcribeAudio(googleGenAI: GoogleGenAI, audioData: AudioContent, signal?: AbortSignal): Promise<string> {
 	const result = await googleGenAI.models.generateContent({
-		model: 'gemini-3.1-flash-lite-preview',
+		model: LLM_MAIN_MODEL,
 		contents: [
 			{
 				role: 'user',

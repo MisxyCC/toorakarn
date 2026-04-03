@@ -1,4 +1,4 @@
-import { TOP_K } from './constant';
+import { LLM_MAIN_MODEL, TOP_K } from './constant';
 import {
 	isReachedGlobalLimit,
 	responseRPMLimit,
@@ -11,6 +11,7 @@ import {
 	getGeminiEmbedding,
 	responseServiceUnavailable,
 	startLoadingAnimation,
+	responseGeminiTimeout,
 } from './helper';
 import { LineEvent, CommonErrorResponse, AudioContent, KBDocument } from './model';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
@@ -80,7 +81,6 @@ export async function handleMessageEvent(event: LineEvent, env: Env): Promise<vo
 		// ---------------------------------------------------------
 
 		console.log(`[DEBUG] 🔍 Embedding query & Searching Vectorize...`);
-		//const userVector = await getGeminiEmbedding(searchQueryText, googleGenAI, timeoutSignal);
 		const userVector = await getGeminiEmbedding(searchQueryText, env.GOOGLE_API_KEY);
 
 		// ค้นหา ID จาก Vectorize
@@ -127,6 +127,8 @@ export async function handleMessageEvent(event: LineEvent, env: Env): Promise<vo
 			await responseRPDLimit(replyToken, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal);
 		} else if (error.message === CommonErrorResponse.GEMINI_SERVICE_UNAVAILABLE) {
 			await responseServiceUnavailable(replyToken, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal);
+		} else if (error.message === CommonErrorResponse.GEMINI_TIMEOUT) {
+			await responseGeminiTimeout(replyToken, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal);
 		} else {
 			const fallbackMessage = 'ขออภัยค่ะ ระบบเกิดขัดข้องชั่วคราว รบกวนรอสักครู่แล้วลองใหม่อีกครั้งนะคะ 😊';
 			await replyToLine(replyToken, fallbackMessage, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal);
@@ -164,7 +166,7 @@ export async function generateAnswerWithGemini(
 		contents.push({ role: 'user', parts });
 
 		const result = await googleGenAI.models.generateContent({
-			model: 'gemini-3.1-flash-lite-preview',
+			model: LLM_MAIN_MODEL,
 			contents: contents,
 			config: {
 				temperature: 0.1,
