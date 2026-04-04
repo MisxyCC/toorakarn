@@ -16,13 +16,20 @@
 	"kv_namespaces": [
     {
       "binding": "KV",
-      "id": "cc5a22de4a2f461c9bbaf4284e151c51",
+      "id": "bc9e53da01504634bc9dffa53f2c3db8",
     }
   	],
 	"vectorize": [
 	{
 		"binding": "VECTORIZE",
 		"index_name": "toorakarn-knowledge-index"
+    }
+	],
+	"d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "toorakarn-tel-ne1-directory",
+      "database_id": "237e073c-697d-4469-97ae-2277cbf34d0f" 
     }
 	],
 	"ratelimits": [

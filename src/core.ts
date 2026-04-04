@@ -166,7 +166,7 @@ export async function generateAnswerWithGemini(
 		contents.push({ role: 'user', parts });
 
 		const result = await googleGenAI.models.generateContent({
-			model: LLM_MAIN_MODEL,
+			model: LLM_MAIN_MODEL[0],
 			contents: contents,
 			config: {
 				temperature: 0.1,

@@ -241,7 +241,7 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
 // 🟢 ฟังก์ชันใหม่: ให้ AI ถอดเสียงเป็นข้อความก่อนนำไปค้นหา (Transcription)
 export async function transcribeAudio(googleGenAI: GoogleGenAI, audioData: AudioContent, signal?: AbortSignal): Promise<string> {
 	const result = await googleGenAI.models.generateContent({
-		model: LLM_MAIN_MODEL,
+		model: LLM_MAIN_MODEL[0],
 		contents: [
 			{
 				role: 'user',
@@ -256,4 +256,40 @@ export async function transcribeAudio(googleGenAI: GoogleGenAI, audioData: Audio
 		},
 	});
 	return result.text?.trim() || '';
+}
+
+// --- 🟢 ฟังก์ชันใหม่: LLM Query Router สกัด Intent และตัวย่อแผนก ---
+export async function analyzeQueryIntent(googleGenAI: GoogleGenAI, userQuery: string, signal?: AbortSignal) {
+	const routerPrompt = `
+คุณคือผู้เชี่ยวชาญการวิเคราะห์ความต้องการประจำ กฟภ.
+อ่านข้อความจากผู้ใช้ แล้วตอบกลับเป็น JSON ตาม Schema เท่านั้น
+หากมีตัวย่อแผนก ให้ออกเสียงและแปลงเป็นตัวย่อภาษาไทย 3-6 ตัวอักษรที่ถูกต้องเสมอ (เช่น ผ.ค.ข. หรือ ผอ คอ ขอ -> ผคข)
+
+[JSON Schema]
+{
+  "intent": "directory" | "welfare" | "general", 
+  "search_keywords": "คำค้นหาหลักที่ตัดคำขยะออกแล้ว",
+  "acronym_filter": "ตัวย่อแผนก/หน่วยงานที่ถูกต้อง (ถ้ามี) หากไม่มีให้เว้นว่าง"
+}
+`;
+
+	try {
+		const result = await googleGenAI.models.generateContent({
+			model: LLM_MAIN_MODEL[0],
+			contents: [{ role: 'user', parts: [{ text: `ข้อความ: "${userQuery}"` }] }],
+			config: {
+				systemInstruction: routerPrompt,
+				responseMimeType: 'application/json',
+				temperature: 0.1,
+				abortSignal: signal,
+			},
+		});
+
+		const responseText = result.text?.trim() || '{}';
+		return JSON.parse(responseText);
+	} catch (error) {
+		console.error("[Router Error]", error);
+		// Fallback เพื่อให้ระบบทำงานต่อได้แม้ AI วิเคราะห์พลาด
+		return { intent: "general", search_keywords: userQuery, acronym_filter: "" };
+	}
 }
