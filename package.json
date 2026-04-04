@@ -17,7 +17,7 @@
 		"wrangler": "^4.80.0"
 	},
 	"dependencies": {
-		"@google/genai": "^1.46.0",
+		"@google/genai": "^1.48.0",
 		"fuse.js": "^7.1.0"
 	}
 }

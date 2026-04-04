@@ -12,6 +12,7 @@ import {
 	responseServiceUnavailable,
 	startLoadingAnimation,
 	responseGeminiTimeout,
+	analyzeQueryIntent, // 👈 เพิ่ม Import Router
 } from './helper';
 import { LineEvent, CommonErrorResponse, AudioContent, KBDocument } from './model';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
@@ -24,6 +25,7 @@ export interface Env {
 	LINE_CHANNEL_SECRET: string;
 	VECTORIZE: VectorizeIndex;
 	KV: KVNamespace;
+	DB: D1Database; // 👈 เพิ่ม D1 Binding
 }
 // --- Core Logic สำหรับจัดการข้อความ ---
 export async function handleMessageEvent(event: LineEvent, env: Env): Promise<void> {
@@ -40,7 +42,6 @@ export async function handleMessageEvent(event: LineEvent, env: Env): Promise<vo
 	const messageType = event.message?.type;
 	const messageId = event.message?.id;
 
-	console.log(`[DEBUG] UserID: ${userId}, MessageType: ${messageType}, MessageID: ${messageId}: `);
 	if (!userId || !messageType) {
 		console.log(`[DEBUG] 🛑 Missing userId or messageType. Exiting.`);
 		return;
@@ -50,73 +51,132 @@ export async function handleMessageEvent(event: LineEvent, env: Env): Promise<vo
 		await responseRPMLimit(replyToken, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal);
 		return;
 	}
+	
 	try {
-		// 🟢 0. แสดง Loading Animation ให้ผู้ใช้เห็นว่าบอทกำลังประมวลผล (แสดงสูงสุด 25 วินาที)
+		// 🟢 0. แสดง Loading Animation 
 		await startLoadingAnimation(userId, env.LINE_CHANNEL_ACCESS_TOKEN, baseTimeout / 1000, timeoutSignal);
 
 		let finalAnswer = '';
 		let searchQueryText = '';
-		console.log(`[DEBUG] 🛣️ Routing to Message Type: ${messageType}`);
+		
 		// ---------------------------------------------------------
 		// 🟢 1. เตรียมข้อความสำหรับค้นหา (จาก Text หรือ Audio)
 		// ---------------------------------------------------------
 		if (messageType === 'text' && event.message.text) {
-			console.log(`[DEBUG] 📝 Processing TEXT message: ${event.message.text}`);
 			searchQueryText = event.message.text.slice(0, 500).replace(/[<>{}\\]/g, '');
 		} else if (messageType === 'audio') {
-			console.log(`[DEBUG] 🎙️ Processing AUDIO message...`);
 			const audioBuffer = await getLineAudioContent(messageId, env.LINE_CHANNEL_ACCESS_TOKEN, timeoutSignal);
 			const audioContentData: AudioContent = { base64: arrayBufferToBase64(audioBuffer), mimeType: 'audio/m4a' };
-			// ถอดเสียงเป็นข้อความเพื่อเอาไปทำ Vector Search
 			searchQueryText = await transcribeAudio(googleGenAI, audioContentData, timeoutSignal);
-			console.log(`[DEBUG] 🗣️ Transcribed Audio: ${searchQueryText}`);
 		} else {
-			const fallbackMsg =
-				'ขออภัยค่า 😅 ตอนนี้น้องธุรการยังดูรูปภาพหรือสติ๊กเกอร์ไม่ได้ รบกวนพี่พิมพ์เป็นข้อความ หรือส่งเป็นข้อความเสียงมาแทนนะคะ 💜⚡';
+			const fallbackMsg = 'ขออภัยค่า 😅 ตอนนี้น้องธุรการยังดูรูปภาพหรือสติ๊กเกอร์ไม่ได้ รบกวนพี่พิมพ์เป็นข้อความ หรือส่งเป็นข้อความเสียงมาแทนนะคะ 💜⚡';
 			await replyToLine(replyToken, fallbackMsg, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal);
 			return;
 		}
+
 		// ---------------------------------------------------------
-		// 🟢 2. TWO-HOP RETRIEVAL (Vectorize -> KV)
+		// 🟢 2. วิเคราะห์ Intent ด้วย LLM Router
 		// ---------------------------------------------------------
+		console.log(`[DEBUG] 🧠 Routing Query...`);
+		const queryAnalysis = await analyzeQueryIntent(googleGenAI, searchQueryText, timeoutSignal);
+		console.log(`[DEBUG] 📊 Analysis Result:`, queryAnalysis);
 
-		console.log(`[DEBUG] 🔍 Embedding query & Searching Vectorize...`);
-		const userVector = await getGeminiEmbedding(searchQueryText, env.GOOGLE_API_KEY);
+		let dynamicContext = '';
+		let foundInD1 = false;
 
-		// ค้นหา ID จาก Vectorize
-		const vectorResults = await env.VECTORIZE.query(userVector, { topK: TOP_K });
+		// ---------------------------------------------------------
+		// 🟢 3. HYBRID SEARCH: เช็คหาเบอร์ใน D1 Database (SQL) ก่อน
+		// ---------------------------------------------------------
+		if (queryAnalysis.intent === 'directory') {
+			// ดึงค่าและทำความสะอาดตัวย่อ (ลบจุดออกให้หมด เพื่อป้องกัน AI หลุดพิมพ์จุดมา)
+			const rawKeyword = String(queryAnalysis.search_keywords || '').trim();
+			const acronym = String(queryAnalysis.acronym_filter || '').replace(/\./g, '').trim();
+			
+			console.log(`[DEBUG] 🎯 Searching D1 SQL DB... Acronym: "${acronym}", Keyword: "${rawKeyword}"`);
+			
+			let sqlQuery = "SELECT * FROM PhoneDirectory WHERE 1=1";
+			let bindParams: any[] = [];
 
-		const contextTexts: string[] = [];
-		for (const match of vectorResults.matches) {
-			// เอา ID ไปดึงข้อมูลเต็มจาก KV
-			const kbData = await env.KV.get<KBDocument>(match.id, 'json');
-			if (kbData) {
-				contextTexts.push(`[อ้างอิง: ${kbData.source} | หมวด: ${kbData.title}]\n${kbData.content}`);
+			// 3.1 ค้นหาด้วยตัวย่อ: หาแผนกแม่ตรงๆ (acronym = ?) หรือ แผนกลูกๆ ที่สังกัดอยู่ (LIKE %ตัวย่อ%)
+			if (acronym) {
+				sqlQuery += " AND (acronym = ? OR search_keywords LIKE ?)";
+				bindParams.push(acronym, `%${acronym}%`);
+			}
+
+			// 3.2 จัดการคำค้นหาและกำจัดคำขยะที่ทำให้ SQL ทะลุข้อจำกัด (Complex Pattern)
+			if (rawKeyword) {
+				// คำขยะเหล่านี้จะถูกตัดทิ้ง ไม่นำไปค้นหาในฐานข้อมูล
+				const stopWords: string[] = ['ขอเบอร์', 'เบอร์', 'โทร', 'เบอร์โทร', 'เบอร์โทรศัพท์', 'แผนก', 'กอง', 'ฝ่าย', 'เขต', 'การไฟฟ้า', 'ทั้งหมด', 'ที่อยู่ใต้', 'หน่อย', 'คือเบอร์ใคร', 'ของใคร', 'ใคร'];				
+				// ลบเครื่องหมาย % และ _ ออกจากคำของผู้ใช้เพื่อป้องกัน SQL Error
+				const safeKeywords = rawKeyword.replace(/[%_]/g, '').split(' ')
+					.map(k => k.trim())
+					.filter(k => k.length > 0 && !stopWords.includes(k));
+				
+				for (const word of safeKeywords) {
+					sqlQuery += " AND (search_keywords LIKE ? OR internal_number LIKE ? OR direct_number LIKE ?)";
+					bindParams.push(`%${word}%`, `%${word}%`, `%${word}%`);
+				}
+			}
+
+			// ถ้ามีเงื่อนไขการค้นหา ถึงจะยิง SQL (ป้องกันการดึงข้อมูลมาทั้งหมดทั้งตาราง)
+			if (bindParams.length > 0) {
+				try {
+					const { results } = await env.DB.prepare(sqlQuery).bind(...bindParams).all();
+
+					if (results && results.length > 0) {
+						foundInD1 = true;
+						const d1Contexts = results.map((row: any) => 
+							`[หมวด: เบอร์โทรศัพท์]\nหน่วยงาน: ${row.department_name} (${row.acronym || '-'}) \nตำแหน่ง/จุดติดต่อ: ${row.position}\nเบอร์ภายใน: ${row.internal_number || '-'}\nเบอร์ตรง: ${row.direct_number || '-'}`
+						);
+						dynamicContext = d1Contexts.join('\n\n---\n\n');
+						console.log(`[DEBUG] ✅ Found ${results.length} matches in D1 SQL!`);
+					} else {
+						console.log(`[DEBUG] ❌ No match found in D1 SQL. Falling back...`);
+					}
+				} catch (dbError) {
+					console.error(`[DEBUG] 🚨 D1 SQL Error:`, dbError);
+					// 🌟 [สำคัญ] ถ้า D1 พัง (เช่น Pattern complex) ระบบจะไม่ล่ม แต่จะไหลไปหาใน Vectorize ต่ออย่างปลอดภัย
+					foundInD1 = false;
+				}
 			}
 		}
 
-		// รวม Context เข้าด้วยกัน
-		const dynamicContext = contextTexts.length > 0 ? contextTexts.join('\n\n---\n\n') : 'ไม่พบข้อมูลที่เกี่ยวข้องในฐานข้อมูล';
+		// ---------------------------------------------------------
+		// 🟢 4. FALLBACK: หากไม่ใช่หาเบอร์ หรือ หาเบอร์ใน D1 ไม่เจอ ให้วิ่งไปหา Vectorize
+		// ---------------------------------------------------------
+		if (!foundInD1) {
+			console.log(`[DEBUG] 🔍 Falling back to Vectorize Semantic Search...`);
+			// ใช้คีย์เวิร์ดที่ผ่านการคลีนแล้ว (ถ้ามี) ทำให้การค้นหาความหมายแม่นยำขึ้น
+			const textToEmbed = queryAnalysis.search_keywords || searchQueryText;
+			const userVector = await getGeminiEmbedding(textToEmbed, env.GOOGLE_API_KEY);
 
-		console.log(`[DEBUG] 📚 Retrieved Context Length: ${dynamicContext.length} chars`);
+			const vectorResults = await env.VECTORIZE.query(userVector, { topK: TOP_K });
+
+			const contextTexts: string[] = [];
+			for (const match of vectorResults.matches) {
+				const kbData = await env.KV.get<KBDocument>(match.id, 'json');
+				if (kbData) {
+					contextTexts.push(`[อ้างอิง: ${kbData.source} | หมวด: ${kbData.title}]\n${kbData.content}`);
+				}
+			}
+			dynamicContext = contextTexts.length > 0 ? contextTexts.join('\n\n---\n\n') : 'ไม่พบข้อมูลที่เกี่ยวข้องในฐานข้อมูล';
+			console.log(`[DEBUG] 📚 Retrieved Vector Context Length: ${dynamicContext.length} chars`);
+		}
 
 		// ---------------------------------------------------------
-		// 🟢 3. ให้ Gemini สรุปคำตอบ
+		// 🟢 5. ให้ Gemini สรุปคำตอบสุดท้าย
 		// ---------------------------------------------------------
 		finalAnswer = await generateAnswerWithGemini(googleGenAI, searchQueryText, dynamicContext, undefined, timeoutSignal);
 
 		console.log(`[DEBUG] 📤 Replying to LINE user...`);
 		await replyToLine(replyToken, finalAnswer, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal);
 		console.log(`[DEBUG] --- 🏁 End handleMessageEvent ---`);
+
 	} catch (error: any) {
 		console.error('[DEBUG] 🚨 ERROR in handleMessageEvent:', error);
-		console.error('Error processing message:', error);
-
-		// กรณีพิเศษสำหรับ AbortError / Timeout
+		
 		if (error.name === 'AbortError' || error.message?.includes('timeout') || error.message?.includes('deadline exceeded')) {
-			const timeoutMessage =
-				'แงงง 😭 คำถามนี้รายละเอียดเยอะมาก น้องธุรการคิดจนปวดหัวเลยค่ะ (หมดเวลา 25 วินาที) รบกวนพี่ลองพิมพ์คำถามให้กระชับลงอีกนิดนึงนะคะ 💜⚡';
-			// เราไม่ส่ง timeoutSignal เข้าไปที่นี่ เพราะมัน abort ไปแล้ว ให้สร้างใหม่สั้นๆ หรือไม่ใส่เลย
+			const timeoutMessage = 'แงงง 😭 คำถามนี้รายละเอียดเยอะมาก น้องธุรการคิดจนปวดหัวเลยค่ะ (หมดเวลา 25 วินาที) รบกวนพี่ลองพิมพ์คำถามให้กระชับลงอีกนิดนึงนะคะ 💜⚡';
 			await replyToLine(replyToken, timeoutMessage, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken);
 			return;
 		}
@@ -147,7 +207,7 @@ export async function generateAnswerWithGemini(
 		const contents: any[] = [];
 		const parts: any[] = [];
 
-		parts.push({ text: `Context ข้อมูลสวัสดิการ:\n${context}\n\n` });
+		parts.push({ text: `Context ข้อมูลสวัสดิการ/ติดต่อ:\n${context}\n\n` });
 
 		if (userMessage) {
 			parts.push({ text: `คำถามของผู้ใช้: ${userMessage}` });

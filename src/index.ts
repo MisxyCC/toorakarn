@@ -10,6 +10,7 @@ export interface Env {
 	LINE_CHANNEL_SECRET: string;
 	VECTORIZE: VectorizeIndex;
 	KV: KVNamespace;
+	DB: D1Database;
 }
 
 export default {
