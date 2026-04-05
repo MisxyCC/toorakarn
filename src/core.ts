@@ -13,6 +13,7 @@ import {
 	startLoadingAnimation,
 	responseGeminiTimeout,
 	analyzeQueryIntent,
+	generateAnswerWithGemini,
 } from './helper';
 import { LineEvent, CommonErrorResponse, AudioContent, KBDocument } from './model';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
