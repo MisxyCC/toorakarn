@@ -1,33 +1,22 @@
-import { LLM_MAIN_MODEL, TOP_K } from './constant';
+import { GoogleGenAI } from '@google/genai';
+import { TOP_K } from './constant';
 import {
-	isReachedGlobalLimit,
-	responseRPMLimit,
-	replyToLine,
-	responseRPDLimit,
-	getLineAudioContent,
+	analyzeQueryIntent,
 	arrayBufferToBase64,
-	systemInstruction,
-	transcribeAudio,
+	generateAnswerWithGemini,
 	getGeminiEmbedding,
+	getLineAudioContent,
+	isReachedGlobalLimit,
+	replyToLine,
+	responseGeminiTimeout,
+	responseRPDLimit,
+	responseRPMLimit,
 	responseServiceUnavailable,
 	startLoadingAnimation,
-	responseGeminiTimeout,
-	analyzeQueryIntent,
-	generateAnswerWithGemini,
+	transcribeAudio,
 } from './helper';
-import { LineEvent, CommonErrorResponse, AudioContent, KBDocument } from './model';
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import { AudioContent, CommonErrorResponse, Env, KBDocument, LineEvent } from './model';
 
-export interface Env {
-	GLOBAL_GEMINI_LIMITER: any;
-	USER_SPAM_LIMITER: any;
-	GOOGLE_API_KEY: string;
-	LINE_CHANNEL_ACCESS_TOKEN: string;
-	LINE_CHANNEL_SECRET: string;
-	VECTORIZE: VectorizeIndex;
-	KV: KVNamespace;
-	DB: D1Database; // 👈 เพิ่ม D1 Binding
-}
 // --- Core Logic สำหรับจัดการข้อความ ---
 export async function handleMessageEvent(event: LineEvent, env: Env): Promise<void> {
 	const baseTimeout = 25000; // 25 seconds for main processing, leaving 5 seconds for error response before Cloudflare's 30s limit
@@ -174,7 +163,7 @@ export async function handleMessageEvent(event: LineEvent, env: Env): Promise<vo
 		finalAnswer = await generateAnswerWithGemini(googleGenAI, searchQueryText, dynamicContext, undefined, timeoutSignal);
 
 		console.log(`[DEBUG] 📤 Replying to LINE user with the final answer: ${finalAnswer}`);
-		await replyToLine(replyToken, finalAnswer, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal, true);
+		await replyToLine(replyToken, finalAnswer, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal);
 
 		console.log(`[DEBUG] --- 🏁 End handleMessageEvent ---`);
 

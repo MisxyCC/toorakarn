@@ -5,6 +5,17 @@ export enum CommonErrorResponse {
 	GEMINI_SERVICE_UNAVAILABLE = 'GEMINI_SERVICE_UNAVAILABLE',
 }
 
+export interface Env {
+	GLOBAL_GEMINI_LIMITER: any;
+	USER_SPAM_LIMITER: any;
+	GOOGLE_API_KEY: string;
+	LINE_CHANNEL_ACCESS_TOKEN: string;
+	LINE_CHANNEL_SECRET: string;
+	VECTORIZE: VectorizeIndex;
+	KV: KVNamespace;
+	DB: D1Database;
+}
+
 // Types สำหรับ LINE Webhook
 export interface LineMessage {
 	type: string;

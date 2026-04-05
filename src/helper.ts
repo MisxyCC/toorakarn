@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
-import { AudioContent, CommonErrorResponse } from './model';
 import { Buffer } from 'node:buffer';
-import { LLM_MAIN_MODEL, MAX_HISTORY_LENGTH, MEMORY_TTL_MS } from './constant';
+import { LLM_MAIN_MODEL } from './constant';
+import { AudioContent, CommonErrorResponse } from './model';
 
 export const VECTOR_DIMENSIONALITY = 1536;
 export const systemInstruction = `
@@ -55,13 +55,6 @@ export const systemInstruction = `
 [Sensitive Data]: ห้ามขอ หรือแสดงข้อมูลส่วนบุคคลที่ระบุตัวตนได้ (PII) ของพนักงานในแชท
 `.trim();
 
-export interface Env {
-	RATE_LIMITER: any;
-	GOOGLE_API_KEY: string;
-	LINE_CHANNEL_ACCESS_TOKEN: string;
-	LINE_CHANNEL_SECRET: string;
-}
-
 // --- Helper: ตรวจสอบความถูกต้องของ Request จาก LINE ---
 export async function verifyLineSignature(signature: string, body: string, channelSecret: string): Promise<boolean> {
 	const encoder = new TextEncoder();
@@ -113,7 +106,6 @@ export async function replyToLine(
 	accessToken: string,
 	quoteToken?: string,
 	signal?: AbortSignal,
-	showQuickReply: boolean = false,
 ): Promise<void> {
 	const url = 'https://api.line.me/v2/bot/message/reply';
 	// สร้าง Message Object เบื้องต้น
@@ -122,21 +114,6 @@ export async function replyToLine(
 		text: text,
 		quoteToken: quoteToken,
 	};
-	// 🌟 ถ้าสั่งให้โชว์ แนบ Quick Reply "ล้างความจำ" เข้าไป
-	if (showQuickReply) {
-		messageObj.quickReply = {
-			items: [
-				{
-					type: 'action',
-					action: {
-						type: 'message',
-						label: '🧹 ล้างความจำ',
-						text: 'ล้างความจำ' // ข้อความที่จะส่งเข้าบอทเมื่อผู้ใช้กดปุ่ม
-					}
-				}
-			]
-		};
-	}
 	await fetch(url, {
 		method: 'POST',
 		headers: {
@@ -320,63 +297,63 @@ export async function analyzeQueryIntent(googleGenAI: GoogleGenAI, userQuery: st
 }
 
 export async function generateAnswerWithGemini(
-    googleGenAI: GoogleGenAI,
-    userMessage: string | null,
-    context: string,
-    audioData?: AudioContent,
-    signal?: AbortSignal,
+	googleGenAI: GoogleGenAI,
+	userMessage: string | null,
+	context: string,
+	audioData?: AudioContent,
+	signal?: AbortSignal,
 ): Promise<string> {
-    try {
-        const contents: any[] = [];
+	try {
+		const contents: any[] = [];
 
-        // 2. นำคำถามและ Context ปัจจุบัน ใส่เข้าไปเป็นลำดับสุดท้าย
-        const currentParts: any[] = [];
+		// 2. นำคำถามและ Context ปัจจุบัน ใส่เข้าไปเป็นลำดับสุดท้าย
+		const currentParts: any[] = [];
 
-        currentParts.push({ text: `[ข้อมูลประกอบการตอบคำถามรอบนี้]\n${context}\n\n` });
+		currentParts.push({ text: `[ข้อมูลประกอบการตอบคำถามรอบนี้]\n${context}\n\n` });
 
-        if (userMessage) {
-            currentParts.push({ text: `คำถาม: ${userMessage}` });
-        } else if (audioData) {
-            currentParts.push({
-                text: 'กรุณาฟังไฟล์เสียงนี้ ซึ่งเป็นคำถามจากพนักงาน และตอบคำถามโดยอ้างอิงจากข้อมูลที่มีละเอียด',
-            });
-            currentParts.push({
-                inlineData: {
-                    mimeType: audioData.mimeType,
-                    data: audioData.base64,
-                },
-            });
-        }
+		if (userMessage) {
+			currentParts.push({ text: `คำถาม: ${userMessage}` });
+		} else if (audioData) {
+			currentParts.push({
+				text: 'กรุณาฟังไฟล์เสียงนี้ ซึ่งเป็นคำถามจากพนักงาน และตอบคำถามโดยอ้างอิงจากข้อมูลที่มีละเอียด',
+			});
+			currentParts.push({
+				inlineData: {
+					mimeType: audioData.mimeType,
+					data: audioData.base64,
+				},
+			});
+		}
 
-        contents.push({ role: 'user', parts: currentParts });
+		contents.push({ role: 'user', parts: currentParts });
 
-        const result = await googleGenAI.models.generateContent({
-            model: LLM_MAIN_MODEL[0],
-            contents: contents,
-            config: {
-                temperature: 0.1,
-                systemInstruction: systemInstruction,
-                abortSignal: signal,
-            },
-        });
+		const result = await googleGenAI.models.generateContent({
+			model: LLM_MAIN_MODEL[0],
+			contents: contents,
+			config: {
+				temperature: 0.1,
+				systemInstruction: systemInstruction,
+				abortSignal: signal,
+			},
+		});
 
-        const responseText = result.text?.trim();
-        return responseText || 'ขออภัยค่ะ น้องธุรการไม่สามารถตอบกลับได้ในขณะนี้';
-    } catch (error: any) {
-        console.error('[DEBUG] Gemini SDK Error:', error);
+		const responseText = result.text?.trim();
+		return responseText || 'ขออภัยค่ะ น้องธุรการไม่สามารถตอบกลับได้ในขณะนี้';
+	} catch (error: any) {
+		console.error('[DEBUG] Gemini SDK Error:', error);
 
-        const errorMessage = error.message || '';
-        if (errorMessage.includes('429') || errorMessage.toLowerCase().includes('rate limit')) {
-            if (errorMessage.includes('Requests per minute')) {
-                throw new Error(CommonErrorResponse.REQUEST_PER_MINUTE_EXCEEDED);
-            } else {
-                throw new Error(CommonErrorResponse.REQUESTS_PER_DAY_EXCEEDED);
-            }
-        }
+		const errorMessage = error.message || '';
+		if (errorMessage.includes('429') || errorMessage.toLowerCase().includes('rate limit')) {
+			if (errorMessage.includes('Requests per minute')) {
+				throw new Error(CommonErrorResponse.REQUEST_PER_MINUTE_EXCEEDED);
+			} else {
+				throw new Error(CommonErrorResponse.REQUESTS_PER_DAY_EXCEEDED);
+			}
+		}
 
-        if (error.name === 'AbortError' || errorMessage.includes('deadline exceeded') || errorMessage.includes('timeout')) {
-            throw new Error(CommonErrorResponse.GEMINI_TIMEOUT);
-        }
-        throw error;
-    }
+		if (error.name === 'AbortError' || errorMessage.includes('deadline exceeded') || errorMessage.includes('timeout')) {
+			throw new Error(CommonErrorResponse.GEMINI_TIMEOUT);
+		}
+		throw error;
+	}
 }

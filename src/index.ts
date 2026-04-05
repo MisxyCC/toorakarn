@@ -1,18 +1,6 @@
-import { chatHistoryCronRemover } from './constant';
 import { handleMessageEvent } from './core';
 import { verifyLineSignature } from './helper';
-import { LineWebhookBody } from './model';
-
-export interface Env {
-	GLOBAL_GEMINI_LIMITER: any;
-	USER_SPAM_LIMITER: any;
-	GOOGLE_API_KEY: string;
-	LINE_CHANNEL_ACCESS_TOKEN: string;
-	LINE_CHANNEL_SECRET: string;
-	VECTORIZE: VectorizeIndex;
-	KV: KVNamespace;
-	DB: D1Database;
-}
+import { Env, LineWebhookBody } from './model';
 
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
