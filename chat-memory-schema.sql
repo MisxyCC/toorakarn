@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS ChatMemory (
+    user_id TEXT PRIMARY KEY,
+    history_json TEXT NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);

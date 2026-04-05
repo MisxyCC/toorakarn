@@ -4,7 +4,6 @@ import { Buffer } from 'node:buffer';
 import { LLM_MAIN_MODEL, MAX_HISTORY_LENGTH, MEMORY_TTL_MS } from './constant';
 
 export const VECTOR_DIMENSIONALITY = 1536;
-
 export const systemInstruction = `
 1. บทบาทและบุคลิกภาพ (Role & Persona)
 คุณคือ "น้องธุรการ" ผู้ช่วย AI ประจำ กดส.ฉ.1 💜⚡
@@ -282,7 +281,7 @@ export async function transcribeAudio(googleGenAI: GoogleGenAI, audioData: Audio
 
 // --- 🟢 ฟังก์ชันใหม่: LLM Query Router สกัด Intent และตัวย่อแผนก ---
 export async function analyzeQueryIntent(googleGenAI: GoogleGenAI, userQuery: string, signal?: AbortSignal) {
-const routerPrompt = `
+	const routerPrompt = `
 คุณคือผู้เชี่ยวชาญการวิเคราะห์ความต้องการประจำ กฟภ.
 หน้าที่ของคุณคืออ่านข้อความจากผู้ใช้ แล้วตอบกลับเป็น JSON ตาม Schema ที่กำหนดเท่านั้น 
 หากพบตัวย่อหน่วยงาน ให้แปลงเป็นตัวย่อภาษาไทยที่ถูกต้องแบบไม่มีจุดเสมอ 
@@ -324,7 +323,7 @@ const routerPrompt = `
 export async function getChatMemory(db: D1Database, userId: string): Promise<ChatMessage[]> {
 	const result = await db.prepare("SELECT history_json FROM ChatMemory WHERE user_id = ?").bind(userId).first<{ history_json: string }>();
 	if (!result) return [];
-	
+
 	try {
 		const history: ChatMessage[] = JSON.parse(result.history_json);
 		const now = Date.now();
@@ -340,7 +339,7 @@ export async function getChatMemory(db: D1Database, userId: string): Promise<Cha
 export async function saveChatMemory(db: D1Database, userId: string, newHistory: ChatMessage[]) {
 	// Sliding Window: ตัดเอาเฉพาะ 4 ข้อความล่าสุด
 	const trimmedHistory = newHistory.slice(-MAX_HISTORY_LENGTH);
-	
+
 	// บันทึกลง D1 (ใช้ ON CONFLICT เพื่ออัปเดตทับถ้ามีข้อมูลเดิมอยู่แล้ว)
 	const sql = `
 		INSERT INTO ChatMemory (user_id, history_json, updated_at) 
@@ -357,5 +356,18 @@ export async function clearChatMemory(db: D1Database, userId: string): Promise<v
 		console.log(`[DEBUG] 🧹 Cleared memory for user: ${userId}`);
 	} catch (e) {
 		console.error("[Memory Error] Failed to clear memory", e);
+	}
+}
+
+export async function cleanupChatHistory(db: D1Database): Promise<void> {
+	console.log(`[Cron] 🧹 Starting database cleanup at ${new Date().toISOString()}`);
+	try {
+		const result = await db.prepare(
+			"DELETE FROM ChatMemory WHERE updated_at <= datetime('now', '-1 hour')"
+		).run();
+
+		console.log(`[Cron] ✅ Cleanup success. Rows affected: ${result.meta.changes}`);
+	} catch (error) {
+		console.error("[Cron] ❌ Cleanup failed:", error);
 	}
 }

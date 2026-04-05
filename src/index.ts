@@ -1,10 +1,11 @@
+import { chatHistoryCronRemover } from './constant';
 import { handleMessageEvent } from './core';
-import { verifyLineSignature } from './helper';
+import { cleanupChatHistory, verifyLineSignature } from './helper';
 import { LineWebhookBody } from './model';
 
 export interface Env {
 	GLOBAL_GEMINI_LIMITER: any;
-  	USER_SPAM_LIMITER: any;
+	USER_SPAM_LIMITER: any;
 	GOOGLE_API_KEY: string;
 	LINE_CHANNEL_ACCESS_TOKEN: string;
 	LINE_CHANNEL_SECRET: string;
@@ -36,5 +37,14 @@ export default {
 			ctx.waitUntil(handleMessageEvent(event, env));
 		}
 		return new Response('OK', { status: 200 });
+	},
+	async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+		switch (controller.cron) {
+			case chatHistoryCronRemover:
+				await cleanupChatHistory(env.DB);
+				break;
+			default:
+				break;
+		}
 	},
 } satisfies ExportedHandler<Env>;
