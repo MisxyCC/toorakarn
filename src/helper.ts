@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { AudioContent } from './model';
+import { AudioContent, CommonErrorResponse } from './model';
 import { Buffer } from 'node:buffer';
 import { LLM_MAIN_MODEL, MAX_HISTORY_LENGTH, MEMORY_TTL_MS } from './constant';
 
@@ -317,4 +317,66 @@ export async function analyzeQueryIntent(googleGenAI: GoogleGenAI, userQuery: st
 		// Fallback เพื่อให้ระบบทำงานต่อได้แม้ AI วิเคราะห์พลาด
 		return { intent: "general", search_keywords: userQuery, acronym_filter: "" };
 	}
+}
+
+export async function generateAnswerWithGemini(
+    googleGenAI: GoogleGenAI,
+    userMessage: string | null,
+    context: string,
+    audioData?: AudioContent,
+    signal?: AbortSignal,
+): Promise<string> {
+    try {
+        const contents: any[] = [];
+
+        // 2. นำคำถามและ Context ปัจจุบัน ใส่เข้าไปเป็นลำดับสุดท้าย
+        const currentParts: any[] = [];
+
+        currentParts.push({ text: `[ข้อมูลประกอบการตอบคำถามรอบนี้]\n${context}\n\n` });
+
+        if (userMessage) {
+            currentParts.push({ text: `คำถาม: ${userMessage}` });
+        } else if (audioData) {
+            currentParts.push({
+                text: 'กรุณาฟังไฟล์เสียงนี้ ซึ่งเป็นคำถามจากพนักงาน และตอบคำถามโดยอ้างอิงจากข้อมูลที่มีละเอียด',
+            });
+            currentParts.push({
+                inlineData: {
+                    mimeType: audioData.mimeType,
+                    data: audioData.base64,
+                },
+            });
+        }
+
+        contents.push({ role: 'user', parts: currentParts });
+
+        const result = await googleGenAI.models.generateContent({
+            model: LLM_MAIN_MODEL[0],
+            contents: contents,
+            config: {
+                temperature: 0.1,
+                systemInstruction: systemInstruction,
+                abortSignal: signal,
+            },
+        });
+
+        const responseText = result.text?.trim();
+        return responseText || 'ขออภัยค่ะ น้องธุรการไม่สามารถตอบกลับได้ในขณะนี้';
+    } catch (error: any) {
+        console.error('[DEBUG] Gemini SDK Error:', error);
+
+        const errorMessage = error.message || '';
+        if (errorMessage.includes('429') || errorMessage.toLowerCase().includes('rate limit')) {
+            if (errorMessage.includes('Requests per minute')) {
+                throw new Error(CommonErrorResponse.REQUEST_PER_MINUTE_EXCEEDED);
+            } else {
+                throw new Error(CommonErrorResponse.REQUESTS_PER_DAY_EXCEEDED);
+            }
+        }
+
+        if (error.name === 'AbortError' || errorMessage.includes('deadline exceeded') || errorMessage.includes('timeout')) {
+            throw new Error(CommonErrorResponse.GEMINI_TIMEOUT);
+        }
+        throw error;
+    }
 }
