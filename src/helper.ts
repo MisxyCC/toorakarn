@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
-import { AudioContent, GeminiEmbeddingResponse, GeminiGenerateResponse } from './model';
+import { AudioContent, ChatMessage, GeminiEmbeddingResponse, GeminiGenerateResponse } from './model';
 import { Buffer } from 'node:buffer';
-import { LLM_MAIN_MODEL } from './constant';
+import { LLM_MAIN_MODEL, MAX_HISTORY_LENGTH, MEMORY_TTL_MS } from './constant';
 
 export const VECTOR_DIMENSIONALITY = 1536;
 
@@ -114,8 +114,30 @@ export async function replyToLine(
 	accessToken: string,
 	quoteToken?: string,
 	signal?: AbortSignal,
+	showQuickReply: boolean = false,
 ): Promise<void> {
 	const url = 'https://api.line.me/v2/bot/message/reply';
+	// สร้าง Message Object เบื้องต้น
+	const messageObj: any = {
+		type: 'text',
+		text: text,
+		quoteToken: quoteToken,
+	};
+	// 🌟 ถ้าสั่งให้โชว์ แนบ Quick Reply "ล้างความจำ" เข้าไป
+	if (showQuickReply) {
+		messageObj.quickReply = {
+			items: [
+				{
+					type: 'action',
+					action: {
+						type: 'message',
+						label: '🧹 ล้างความจำ',
+						text: 'ล้างความจำ' // ข้อความที่จะส่งเข้าบอทเมื่อผู้ใช้กดปุ่ม
+					}
+				}
+			]
+		};
+	}
 	await fetch(url, {
 		method: 'POST',
 		headers: {
@@ -124,7 +146,7 @@ export async function replyToLine(
 		},
 		body: JSON.stringify({
 			replyToken: replyToken,
-			messages: [{ type: 'text', text: text, quoteToken: quoteToken }],
+			messages: [messageObj],
 		}),
 		signal,
 	});
@@ -260,20 +282,21 @@ export async function transcribeAudio(googleGenAI: GoogleGenAI, audioData: Audio
 
 // --- 🟢 ฟังก์ชันใหม่: LLM Query Router สกัด Intent และตัวย่อแผนก ---
 export async function analyzeQueryIntent(googleGenAI: GoogleGenAI, userQuery: string, signal?: AbortSignal) {
-	// ในไฟล์ src/helper.ts ฟังก์ชัน analyzeQueryIntent
-	const routerPrompt = `
+const routerPrompt = `
 คุณคือผู้เชี่ยวชาญการวิเคราะห์ความต้องการประจำ กฟภ.
-อ่านข้อความจากผู้ใช้ แล้วตอบกลับเป็น JSON ตาม Schema เท่านั้น
-- หากมีตัวย่อแผนก ให้ออกเสียงและแปลงเป็นตัวย่อภาษาไทย 3-6 ตัวอักษรที่ถูกต้องเสมอ (เช่น ผ.ค.ข. หรือ ผอ คอ ขอ -> ผคข)
-- ⚠️ กฎเหล็ก: ในช่อง acronym_filter ห้ามมีเครื่องหมายจุด (.) หรือเว้นวรรคเด็ดขาด
-- ⚠️ กฎเหล็ก: ในช่อง search_keywords ห้ามใส่คำเหล่านี้: "ขอเบอร์", "เบอร์โทรศัพท์", "เบอร์", "แผนก", "กอง", "ฝ่าย", "ทั้งหมด" (ให้ใส่เฉพาะชื่อคนหรือชื่อสถานที่ที่เฉพาะเจาะจงเท่านั้น หากไม่มีให้เว้นว่าง)
+หน้าที่ของคุณคืออ่านข้อความจากผู้ใช้ แล้วตอบกลับเป็น JSON ตาม Schema ที่กำหนดเท่านั้น 
+หากพบตัวย่อหน่วยงาน ให้แปลงเป็นตัวย่อภาษาไทยที่ถูกต้องแบบไม่มีจุดเสมอ 
+และในส่วนของคำค้นหา ให้ดึงมาเฉพาะชื่อคนหรือสถานที่เฉพาะเจาะจง โดยห้ามใส่คำกริยาหรือคำนามทั่วไปเด็ดขาด
 
-[JSON Schema]
-{
-  "intent": "directory" | "welfare" | "general", 
-  "search_keywords": "คำค้นหาที่ตัดคำขยะออกแล้ว (ถ้าไม่มีให้เว้นว่าง)",
-  "acronym_filter": "ตัวย่อแผนก/หน่วยงานที่ถูกต้องแบบไม่มีจุด (ถ้ามี) หากไม่มีให้เว้นว่าง"
-}
+[ตัวอย่างการวิเคราะห์ที่ถูกต้อง]
+ข้อความ: "ขอเบอร์ กดส หน่อยครับ"
+{"intent": "directory", "search_keywords": "", "acronym_filter": "กดส"}
+
+ข้อความ: "ติดต่อแผนกสนับสนุน ขอนแก่น"
+{"intent": "directory", "search_keywords": "สนับสนุน ขอนแก่น", "acronym_filter": ""}
+
+ข้อความ: "เบอร์พี่สมชาย แผนกบุคคล"
+{"intent": "directory", "search_keywords": "สมชาย บุคคล", "acronym_filter": ""}
 `;
 
 	try {
@@ -294,5 +317,45 @@ export async function analyzeQueryIntent(googleGenAI: GoogleGenAI, userQuery: st
 		console.error("[Router Error]", error);
 		// Fallback เพื่อให้ระบบทำงานต่อได้แม้ AI วิเคราะห์พลาด
 		return { intent: "general", search_keywords: userQuery, acronym_filter: "" };
+	}
+}
+
+// 1. ฟังก์ชันดึงความจำ
+export async function getChatMemory(db: D1Database, userId: string): Promise<ChatMessage[]> {
+	const result = await db.prepare("SELECT history_json FROM ChatMemory WHERE user_id = ?").bind(userId).first<{ history_json: string }>();
+	if (!result) return [];
+	
+	try {
+		const history: ChatMessage[] = JSON.parse(result.history_json);
+		const now = Date.now();
+		// กรองเอาเฉพาะข้อความที่ไม่เกิน 15 นาที
+		return history.filter(msg => (now - msg.timestamp) < MEMORY_TTL_MS);
+	} catch (e) {
+		console.error("[Memory Error] Failed to parse history", e);
+		return [];
+	}
+}
+
+// 2. ฟังก์ชันบันทึกความจำ
+export async function saveChatMemory(db: D1Database, userId: string, newHistory: ChatMessage[]) {
+	// Sliding Window: ตัดเอาเฉพาะ 4 ข้อความล่าสุด
+	const trimmedHistory = newHistory.slice(-MAX_HISTORY_LENGTH);
+	
+	// บันทึกลง D1 (ใช้ ON CONFLICT เพื่ออัปเดตทับถ้ามีข้อมูลเดิมอยู่แล้ว)
+	const sql = `
+		INSERT INTO ChatMemory (user_id, history_json, updated_at) 
+		VALUES (?, ?, CURRENT_TIMESTAMP) 
+		ON CONFLICT(user_id) DO UPDATE SET history_json = excluded.history_json, updated_at = CURRENT_TIMESTAMP
+	`;
+	await db.prepare(sql).bind(userId, JSON.stringify(trimmedHistory)).run();
+}
+
+// 3. ฟังก์ชันเคลียร์ความจำ (ลบทิ้งจากฐานข้อมูล D1 ทันที)
+export async function clearChatMemory(db: D1Database, userId: string): Promise<void> {
+	try {
+		await db.prepare("DELETE FROM ChatMemory WHERE user_id = ?").bind(userId).run();
+		console.log(`[DEBUG] 🧹 Cleared memory for user: ${userId}`);
+	} catch (e) {
+		console.error("[Memory Error] Failed to clear memory", e);
 	}
 }
