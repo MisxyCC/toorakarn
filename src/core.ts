@@ -13,11 +13,8 @@ import {
 	startLoadingAnimation,
 	responseGeminiTimeout,
 	analyzeQueryIntent,
-	getChatMemory,
-	saveChatMemory,
-	clearChatMemory, // 👈 เพิ่ม Import Router
 } from './helper';
-import { LineEvent, CommonErrorResponse, AudioContent, KBDocument, ChatMessage } from './model';
+import { LineEvent, CommonErrorResponse, AudioContent, KBDocument } from './model';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 
 export interface Env {
@@ -76,14 +73,6 @@ export async function handleMessageEvent(event: LineEvent, env: Env): Promise<vo
 			await replyToLine(replyToken, fallbackMsg, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal);
 			return;
 		}
-
-		// 🌟 เพิ่มบล็อกนี้: ดักจับคำสั่งล้างความจำ
-        const resetKeywords = ['ล้างความจำ', 'เริ่มใหม่', 'ลืมเรื่องที่คุย', 'clear'];
-        if (resetKeywords.includes(searchQueryText.trim().toLowerCase())) {
-            await clearChatMemory(env.DB, userId);
-            await replyToLine(replyToken, 'น้องธุรการล้างความจำเรียบร้อยแล้วค่ะ เริ่มคุยเรื่องใหม่ได้เลยค่า 💜⚡', env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal);
-            return;
-        }
 
 		// ---------------------------------------------------------
 		// 🟢 2. วิเคราะห์ Intent ด้วย LLM Router
@@ -178,22 +167,14 @@ if (!foundInD1) {
         console.log(`[DEBUG] 📚 Retrieved Vector Context Length: ${dynamicContext.length} chars`);
     		}
 		}
-		//ดึงประวัติการคุยเก่าจาก D1
-		const chatHistory = await getChatMemory(env.DB, userId);
 		// ---------------------------------------------------------
 		// 🟢 5. ให้ Gemini สรุปคำตอบสุดท้าย
 		// ---------------------------------------------------------
-		finalAnswer = await generateAnswerWithGemini(googleGenAI, searchQueryText, dynamicContext, chatHistory , undefined, timeoutSignal);
+		finalAnswer = await generateAnswerWithGemini(googleGenAI, searchQueryText, dynamicContext , undefined, timeoutSignal);
 
 		console.log(`[DEBUG] 📤 Replying to LINE user with the final answer: ${finalAnswer}`);
 		await replyToLine(replyToken, finalAnswer, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal, true);
 
-        if (searchQueryText && finalAnswer) {
-			const currentTimestamp: number = Date.now();
-            chatHistory.push({ role: 'user', text: searchQueryText, timestamp: currentTimestamp });
-            chatHistory.push({ role: 'model', text: finalAnswer, timestamp: currentTimestamp });
-            await saveChatMemory(env.DB, userId, chatHistory);
-        }
 		console.log(`[DEBUG] --- 🏁 End handleMessageEvent ---`);
 
 	} catch (error: any) {
@@ -224,20 +205,11 @@ export async function generateAnswerWithGemini(
     googleGenAI: GoogleGenAI,
     userMessage: string | null,
     context: string,
-    chatHistory: ChatMessage[],
     audioData?: AudioContent,
     signal?: AbortSignal,
 ): Promise<string> {
     try {
         const contents: any[] = [];
-
-        // 1. นำประวัติการคุยเก่า ใส่เข้าไปใน contents ให้อยู่ลำดับแรกๆ
-        for (const msg of chatHistory) {
-            contents.push({
-                role: msg.role,
-                parts: [{ text: msg.text }]
-            });
-        }
 
         // 2. นำคำถามและ Context ปัจจุบัน ใส่เข้าไปเป็นลำดับสุดท้าย
         const currentParts: any[] = [];

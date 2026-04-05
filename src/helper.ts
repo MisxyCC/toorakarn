@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { AudioContent, ChatMessage, GeminiEmbeddingResponse, GeminiGenerateResponse } from './model';
+import { AudioContent } from './model';
 import { Buffer } from 'node:buffer';
 import { LLM_MAIN_MODEL, MAX_HISTORY_LENGTH, MEMORY_TTL_MS } from './constant';
 
@@ -316,58 +316,5 @@ export async function analyzeQueryIntent(googleGenAI: GoogleGenAI, userQuery: st
 		console.error("[Router Error]", error);
 		// Fallback เพื่อให้ระบบทำงานต่อได้แม้ AI วิเคราะห์พลาด
 		return { intent: "general", search_keywords: userQuery, acronym_filter: "" };
-	}
-}
-
-// 1. ฟังก์ชันดึงความจำ
-export async function getChatMemory(db: D1Database, userId: string): Promise<ChatMessage[]> {
-	const result = await db.prepare("SELECT history_json FROM ChatMemory WHERE user_id = ?").bind(userId).first<{ history_json: string }>();
-	if (!result) return [];
-
-	try {
-		const history: ChatMessage[] = JSON.parse(result.history_json);
-		const now = Date.now();
-		// กรองเอาเฉพาะข้อความที่ไม่เกิน 15 นาที
-		return history.filter(msg => (now - msg.timestamp) < MEMORY_TTL_MS);
-	} catch (e) {
-		console.error("[Memory Error] Failed to parse history", e);
-		return [];
-	}
-}
-
-// 2. ฟังก์ชันบันทึกความจำ
-export async function saveChatMemory(db: D1Database, userId: string, newHistory: ChatMessage[]) {
-	// Sliding Window: ตัดเอาเฉพาะ 4 ข้อความล่าสุด
-	const trimmedHistory = newHistory.slice(-MAX_HISTORY_LENGTH);
-
-	// บันทึกลง D1 (ใช้ ON CONFLICT เพื่ออัปเดตทับถ้ามีข้อมูลเดิมอยู่แล้ว)
-	const sql = `
-		INSERT INTO ChatMemory (user_id, history_json, updated_at) 
-		VALUES (?, ?, CURRENT_TIMESTAMP) 
-		ON CONFLICT(user_id) DO UPDATE SET history_json = excluded.history_json, updated_at = CURRENT_TIMESTAMP
-	`;
-	await db.prepare(sql).bind(userId, JSON.stringify(trimmedHistory)).run();
-}
-
-// 3. ฟังก์ชันเคลียร์ความจำ (ลบทิ้งจากฐานข้อมูล D1 ทันที)
-export async function clearChatMemory(db: D1Database, userId: string): Promise<void> {
-	try {
-		await db.prepare("DELETE FROM ChatMemory WHERE user_id = ?").bind(userId).run();
-		console.log(`[DEBUG] 🧹 Cleared memory for user: ${userId}`);
-	} catch (e) {
-		console.error("[Memory Error] Failed to clear memory", e);
-	}
-}
-
-export async function cleanupChatHistory(db: D1Database): Promise<void> {
-	console.log(`[Cron] 🧹 Starting database cleanup at ${new Date().toISOString()}`);
-	try {
-		const result = await db.prepare(
-			"DELETE FROM ChatMemory WHERE updated_at <= datetime('now', '-1 hour')"
-		).run();
-
-		console.log(`[Cron] ✅ Cleanup success. Rows affected: ${result.meta.changes}`);
-	} catch (error) {
-		console.error("[Cron] ❌ Cleanup failed:", error);
 	}
 }

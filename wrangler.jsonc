@@ -50,9 +50,6 @@
 	  }
 	}
   ],
-  "triggers": {
-    "crons": ["0 * * * *"] // รันทุกต้นชั่วโมง (เช่น 10:00, 11:00)
-  }
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

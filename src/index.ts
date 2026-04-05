@@ -1,6 +1,6 @@
 import { chatHistoryCronRemover } from './constant';
 import { handleMessageEvent } from './core';
-import { cleanupChatHistory, verifyLineSignature } from './helper';
+import { verifyLineSignature } from './helper';
 import { LineWebhookBody } from './model';
 
 export interface Env {
@@ -37,14 +37,5 @@ export default {
 			ctx.waitUntil(handleMessageEvent(event, env));
 		}
 		return new Response('OK', { status: 200 });
-	},
-	async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-		switch (controller.cron) {
-			case chatHistoryCronRemover:
-				await cleanupChatHistory(env.DB);
-				break;
-			default:
-				break;
-		}
 	},
 } satisfies ExportedHandler<Env>;
