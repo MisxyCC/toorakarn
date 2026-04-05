@@ -1,7 +1,6 @@
 export const TOP_K = 5;
 export const LLM_MAIN_MODEL: string[] = [
     'gemini-3.1-flash-lite-preview',
-    'gemini-3.1-flash-live-preview',
     'gemma-4-31b-it'
 ];
 export const VECTOR_DIMENSIONALITY = 1536;
