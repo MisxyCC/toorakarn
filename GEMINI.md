@@ -1,64 +1,73 @@
-# GEMINI.md - Project Context: Toorakarn (น้องธุรการ) 💜⚡
+# GEMINI.md - Toorakarn AI Assistant (น้องธุรการ) 💜⚡
 
-This file serves as the foundational instructional context for Gemini CLI when working within the Toorakarn project.
+This document provides foundational context, architectural overview, and development guidelines for the **Toorakarn** project, an AI Assistant developed for Provincial Electricity Authority (PEA) employees.
 
-## 🚀 Project Overview
-**Toorakarn (น้องธุรการ)** is an AI Chatbot developed as a personal assistant for **Provincial Electricity Authority (PEA / กฟภ.)** employees. It assists with inquiries regarding employee benefits, regulations, and administrative procedures via the LINE Messaging API.
+## 🌟 Project Overview
+**Toorakarn (น้องธุรการ)** is a specialized AI Chatbot designed to help PEA employees access welfare information, regulations, and administrative procedures through the LINE Messaging API.
 
-### 🛠 Core Technology Stack
-- **Platform:** Cloudflare Workers (TypeScript)
-- **AI Model:** Google Gemini 3.1 Flash Lite (via `@google/genai` SDK)
-- **Database/Storage:** 
-  - **Cloudflare Vectorize:** For semantic search and RAG indexing.
-  - **Cloudflare KV:** For storing full knowledge base document content.
-- **Interface:** LINE Messaging API (Webhook based).
-- **Runtime:** Node.js compatibility mode on Cloudflare.
+- **Primary Goal:** Provide accurate, polite, and professional assistance regarding PEA welfare and contact information.
+- **Core Technology Stack:**
+    - **Runtime:** Cloudflare Workers (TypeScript)
+    - **AI Engine:** Google Gemini (3.1 Flash Lite for logic/voice, Embedding-2 for search)
+    - **Databases:** 
+        - **Cloudflare Vectorize:** Semantic search for welfare documents.
+        - **Cloudflare KV:** Storage for document content (referenced by Vectorize).
+        - **Cloudflare D1 (SQL):** Phone directory and sliding-window chat memory.
+    - **Interface:** LINE Messaging API (Webhook-based).
 
-### 🏗 Architecture & Flow
-1. **Webhook Entry:** `src/index.ts` receives POST requests from LINE, verifies signatures, and hands off events to the core logic.
-2. **Core Processing:** `src/core.ts` manages the lifecycle of a message:
-   - **Text Messages:** Extracted directly.
-   - **Audio Messages:** Downloaded from LINE and transcribed using Gemini.
-3. **Retrieval-Augmented Generation (RAG):**
-   - Query text is converted to an embedding.
-   - **Two-Hop Retrieval:** 
-     1. Search `VECTORIZE` for the top-K matching document IDs.
-     2. Retrieve the full text content from `KV` using those IDs.
-4. **Grounded Generation:** The query and retrieved context are sent to Gemini with a strict system instruction to answer *only* based on the provided context (Strict Grounding).
-5. **Response:** The formatted answer is sent back to the user via the LINE Messaging API.
+## 🏗 System Architecture & Flow
 
----
+### 1. Webhook Entry (`src/index.ts`)
+- Handles incoming POST requests from LINE.
+- Verifies `x-line-signature` to ensure requests originate from LINE.
+- Dispatches events to `handleMessageEvent` using `ctx.waitUntil` for non-blocking execution.
 
-## 💻 Development Commands
-| Command | Purpose |
-|---------|---------|
-| `npm run dev` | Starts local development server using `wrangler dev`. |
-| `npm run deploy` | Deploys the worker to Cloudflare. |
-| `npm run test` | Executes tests using Vitest (Vitest Pool for Workers). |
-| `npm run cf-typegen` | Generates TypeScript types for Cloudflare bindings (KV, Vectorize, etc.). |
+### 2. Core Orchestration (`src/core.ts`)
+- **Rate Limiting:** Implements global (15 RPM) and per-user spam protection.
+- **Input Processing:** 
+    - Text: Sanitized and truncated.
+    - Audio: Transcribed via Gemini (`transcribeAudio`) before processing.
+- **Intent Routing:** Uses an LLM-based router (`analyzeQueryIntent`) to classify queries into `directory` (phone search) or `general/welfare` (RAG search).
+- **Hybrid Search Strategy:**
+    - **Phone Directory:** Queries D1 SQL first if the intent is directory-related.
+    - **Welfare RAG:** Falls back to Gemini Embedding + Cloudflare Vectorize + KV if not found in D1 or if the intent is general.
+- **Contextual Answer Generation:** Gemini generates the final response based on retrieved context, chat history, and strict system instructions.
 
----
+### 3. Knowledge Base & Storage
+- **Vector Index:** `toorakarn-knowledge-index` (1536 dimensions).
+- **D1 Tables:**
+    - `PhoneDirectory`: Stores department names, acronyms, and numbers.
+    - `ChatMemory`: Stores `history_json` for user sessions.
 
-## 📂 Key File Structure
-- `src/index.ts`: Worker entry point; handles request routing and signature verification.
-- `src/core.ts`: The "brain" of the application; coordinates RAG and Gemini interactions.
-- `src/helper.ts`: Utility functions for LINE API, Gemini API, rate limiting, and formatting.
-- `src/model.ts`: TypeScript interfaces and enums (LINE events, Gemini responses, KB documents).
-- `wrangler.jsonc`: Configuration for Cloudflare resources (KV namespaces, Vectorize indexes, Rate limits).
-- `test/`: Vitest test suites.
+## 🛠 Building and Running
 
----
+### Development Commands
+- **Local Dev:** `npm run dev` (uses `wrangler dev`)
+- **Deploy:** `npm run deploy` (uses `wrangler deploy`)
+- **Test:** `npm run test` (uses `vitest`)
+- **Type Generation:** `npm run cf-typegen` (synchronizes Cloudflare bindings with TypeScript)
+
+### Environment Variables (Secrets)
+The following secrets must be configured in Cloudflare:
+- `GOOGLE_API_KEY`: For Gemini API access.
+- `LINE_CHANNEL_ACCESS_TOKEN`: For replying to LINE users.
+- `LINE_CHANNEL_SECRET`: For webhook signature verification.
 
 ## 📏 Development Conventions
-- **Strict Grounding:** AI responses must be grounded in the retrieved knowledge base. Do not allow the model to hallucinate or use external knowledge for welfare rules.
-- **Error Handling:** Use the defined `CommonErrorResponse` patterns. Ensure users receive friendly, persona-consistent error messages (e.g., "แงงง 😭", "ขออภัยค่า 😅").
-- **Performance:** Maintain a response path under 25 seconds to avoid Cloudflare's 30-second execution limit and allow for a timeout response to be sent to LINE.
-- **Bindings:** When adding or changing Cloudflare resources (KV, R2, etc.), update `wrangler.jsonc` and run `npm run cf-typegen`.
 
----
+### Persona & Style (`systemInstruction` in `src/helper.ts`)
+- **Name:** "Nong Toorakarn" (น้องธุรการ) 💜⚡.
+- **Tone:** Warm, professional, helpful, but strictly grounded in provided context.
+- **Formatting:** Use Emojis for structure (💡, 🧮, 📌, 📞, etc.). Avoid Markdown symbols (*, #, -) as they may not render ideally in LINE.
+- **Strict Grounding:** Never hallucinate. If information is not in `<context>`, state that the information is not found.
 
-## 🤖 Persona & Tone
-The assistant's persona is **"น้องธุรการ" (Nong Toorakarn)**:
-- **Tone:** Friendly, helpful, polite, and uses casual Thai office particles (e.g., "นะคะ", "ค่า").
-- **Visuals:** Uses emojis (💜, ⚡) to match the brand identity.
-- **Formatting:** Uses Markdown-lite suitable for mobile phone screens (short paragraphs, bullet points).
+### Technical Patterns
+- **Safety:** Always verify LINE signatures.
+- **Efficiency:** Use `ctx.waitUntil` for all asynchronous tasks after responding to the webhook to avoid exceeding Cloudflare's response time limits.
+- **Memory:** Chat memory is limited to a 4-message sliding window (`MAX_HISTORY_LENGTH`) with a 15-minute TTL (`MEMORY_TTL_MS`).
+- **Timeouts:** Main processing is capped at 25 seconds (`baseTimeout`) to allow a graceful error response before Cloudflare's 30-second hard limit.
+
+### Error Handling
+- Use `CommonErrorResponse` enum for standardized error messages.
+- Specific handling for rate limits (RPM/RPD) and Gemini timeouts.
+- Provide user-friendly feedback in Thai for all failure modes.
