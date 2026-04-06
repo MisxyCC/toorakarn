@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { Buffer } from 'node:buffer';
 import { LLM_MAIN_MODEL, SYSTEM_PROMPT, VECTOR_DIMENSIONALITY } from './constant';
 import { AudioContent, CommonErrorResponse } from './model';
@@ -128,7 +128,7 @@ export async function responseRPMLimit(
 	signal?: AbortSignal,
 ): Promise<void> {
 	const busyMessage =
-		'ตอนนี้มีพี่ๆไฟฟ้าทักเข้ามาสอบถามสวัสดิการเยอะมากเลยค่ะ 😅 คิวตอบล้นแล้ววว รบกวนพี่รอสัก 1 นาที แล้วพิมพ์คำถามส่งมาใหม่อีกครั้งนะค้า 💜⚡';
+		'ตอนนี้มีพี่ๆไฟฟ้าทักเข้ามาสอบถามเยอะมากเลยค่ะ 😅 คิวตอบล้นแล้ววว รบกวนพี่รอสัก 1 นาที แล้วพิมพ์คำถามส่งมาใหม่อีกครั้งนะค้า 💜⚡';
 	await replyToLine(replyToken, busyMessage, lineChannelAccessToken, quoteToken, signal);
 }
 
@@ -150,7 +150,7 @@ export async function responseServiceUnavailable(
 	signal?: AbortSignal,
 ): Promise<void> {
 	const busyMessage =
-		'แงงง ขออภัยด้วยนะค้า 😭 ตอนนี้น้องทำงานหนักมากจนระบบแอบรวนไปนิดนึง รบกวนพี่รอสัก 2-3 นาที แล้วลองพิมพ์คำถามส่งมาใหม่อีกครั้งนะคะ 💜⚡';
+		'แงงง ขออภัยด้วยนะค้า 😭 ตอนนี้มีพี่ๆ ทักหาน้องธุรการพร้อมกันเยอะมากๆ เลยค่ะ ระบบเลยประมวลผลไม่ทันชั่วคราว 🥺 รบกวนพี่รอสัก 2-3 นาที แล้วลองพิมพ์คำถามส่งมาใหม่อีกครั้งนะคะ 💜⚡';
 	await replyToLine(replyToken, busyMessage, lineChannelAccessToken, quoteToken, signal);
 }
 
@@ -198,6 +198,9 @@ export async function transcribeAudio(googleGenAI: GoogleGenAI, audioData: Audio
 			},
 		],
 		config: {
+			thinkingConfig: {
+				thinkingLevel: ThinkingLevel.HIGH
+			},
 			abortSignal: signal,
 		},
 	});
@@ -232,6 +235,9 @@ export async function analyzeQueryIntent(googleGenAI: GoogleGenAI, userQuery: st
 				responseMimeType: 'application/json',
 				temperature: 0.1,
 				abortSignal: signal,
+				// thinkingConfig: {
+				// 	thinkingLevel: ThinkingLevel.HIGH
+				// },
 			},
 		});
 
@@ -279,9 +285,12 @@ export async function generateAnswerWithGemini(
 			model: LLM_MAIN_MODEL[0],
 			contents: contents,
 			config: {
-				temperature: 0.1,
+				temperature: 0.3,
 				systemInstruction: SYSTEM_PROMPT,
 				abortSignal: signal,
+				// thinkingConfig: {
+				// 	thinkingLevel: ThinkingLevel.HIGH
+				// },
 			},
 		});
 

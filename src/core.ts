@@ -180,7 +180,7 @@ export async function handleMessageEvent(event: LineEvent, env: Env): Promise<vo
 			await responseRPMLimit(replyToken, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal);
 		} else if (error.message === CommonErrorResponse.REQUESTS_PER_DAY_EXCEEDED) {
 			await responseRPDLimit(replyToken, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal);
-		} else if (error.message === CommonErrorResponse.GEMINI_SERVICE_UNAVAILABLE) {
+		} else if (error.message === CommonErrorResponse.GEMINI_SERVICE_UNAVAILABLE || error.message.includes('503')) {
 			await responseServiceUnavailable(replyToken, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal);
 		} else if (error.message === CommonErrorResponse.GEMINI_TIMEOUT) {
 			await responseGeminiTimeout(replyToken, env.LINE_CHANNEL_ACCESS_TOKEN, quoteToken, timeoutSignal);
